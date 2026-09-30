@@ -1,15 +1,20 @@
-"""Microsoft Graph sender for personalized ticket-allocation messages."""
+"""Email providers for personalized ticket-allocation messages."""
 
 from __future__ import annotations
 
 import html
 import json
 import os
+import smtplib
+import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from email.message import EmailMessage
+from email.utils import formataddr
+from typing import Protocol
 
 from . import config
 
@@ -22,6 +27,141 @@ class EmailSendError(RuntimeError):
         self.outcome_unknown = outcome_unknown
 
 
+class EmailClient(Protocol):
+    def send_ticket_email(
+        self,
+        *,
+        recipient: str,
+        name: str,
+        new_tickets: list[int],
+        all_tickets: list[int],
+    ) -> dict: ...
+
+
+@dataclass(frozen=True)
+class SMTPEmailConfig:
+    host: str
+    port: int
+    username: str
+    password: str
+    security: str
+    sender: str
+    sender_name: str
+    app_url: str
+    provider: str = "smtp"
+
+    @classmethod
+    def from_env(cls) -> SMTPEmailConfig:
+        port_text = os.getenv("SMTP_PORT", "587").strip()
+        try:
+            port = int(port_text)
+        except ValueError:
+            port = 0
+        username = os.getenv("SMTP_USERNAME", "").strip()
+        return cls(
+            host=os.getenv("SMTP_HOST", "smtp.gmail.com").strip(),
+            port=port,
+            username=username,
+            password=os.getenv("SMTP_PASSWORD", "").strip(),
+            security=os.getenv("SMTP_SECURITY", "starttls").strip().lower(),
+            sender=(os.getenv("EMAIL_SENDER_ADDRESS", "").strip() or username),
+            sender_name=(
+                os.getenv("EMAIL_SENDER_NAME", "").strip() or config.ORG_NAME
+            ),
+            app_url=os.getenv("PUBLIC_APP_URL", "").strip().rstrip("/"),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return not self.missing
+
+    @property
+    def missing(self) -> list[str]:
+        values = {
+            "SMTP_HOST": self.host,
+            "SMTP_PORT": self.port,
+            "SMTP_USERNAME": self.username,
+            "SMTP_PASSWORD": self.password,
+            "EMAIL_SENDER_ADDRESS (or SMTP_USERNAME)": self.sender,
+            "PUBLIC_APP_URL": self.app_url,
+        }
+        missing = [name for name, value in values.items() if not value]
+        if self.security not in {"starttls", "ssl", "none"}:
+            missing.append("SMTP_SECURITY (starttls, ssl, or none)")
+        return missing
+
+
+class SMTPEmailClient:
+    def __init__(self, settings: SMTPEmailConfig) -> None:
+        self.settings = settings
+
+    def send_ticket_email(
+        self,
+        *,
+        recipient: str,
+        name: str,
+        new_tickets: list[int],
+        all_tickets: list[int],
+    ) -> dict:
+        if not self.settings.configured:
+            raise EmailSendError("SMTP email is not configured.")
+        subject, html_body, text_body = render_ticket_email(
+            name=name,
+            new_tickets=new_tickets,
+            all_tickets=all_tickets,
+            app_url=self.settings.app_url,
+        )
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = formataddr(
+            (self.settings.sender_name, self.settings.sender)
+        )
+        message["To"] = formataddr((name, recipient))
+        message.set_content(text_body)
+        message.add_alternative(html_body, subtype="html")
+
+        context = ssl.create_default_context()
+        try:
+            if self.settings.security == "ssl":
+                server = smtplib.SMTP_SSL(
+                    self.settings.host,
+                    self.settings.port,
+                    timeout=30,
+                    context=context,
+                )
+            else:
+                server = smtplib.SMTP(
+                    self.settings.host, self.settings.port, timeout=30
+                )
+            with server:
+                server.ehlo()
+                if self.settings.security == "starttls":
+                    server.starttls(context=context)
+                    server.ehlo()
+                server.login(self.settings.username, self.settings.password)
+                server.send_message(message)
+            return {"status_code": 250, "request_id": ""}
+        except smtplib.SMTPAuthenticationError as error:
+            raise EmailSendError(
+                "SMTP sign-in failed. For Gmail, use a 16-character app "
+                "password rather than the normal account password."
+            ) from error
+        except smtplib.SMTPServerDisconnected as error:
+            raise EmailSendError(
+                f"The SMTP response was uncertain: {error}",
+                outcome_unknown=True,
+            ) from error
+        except smtplib.SMTPException as error:
+            raise EmailSendError(
+                f"The SMTP server rejected the message: {error}"
+            ) from error
+        except (OSError, TimeoutError) as error:
+            raise EmailSendError(
+                f"The SMTP response was uncertain: {error}",
+                outcome_unknown=True,
+            ) from error
+
+
 @dataclass(frozen=True)
 class GraphEmailConfig:
     tenant_id: str
@@ -29,6 +169,7 @@ class GraphEmailConfig:
     client_secret: str
     sender: str
     app_url: str
+    provider: str = "graph"
 
     @classmethod
     def from_env(cls) -> GraphEmailConfig:
@@ -165,6 +306,24 @@ class GraphEmailClient:
                 f"The Microsoft Graph response was uncertain: {error}",
                 outcome_unknown=True,
             ) from error
+
+
+def email_config() -> SMTPEmailConfig | GraphEmailConfig:
+    """Load the provider, defaulting to SMTP unless Graph is explicit."""
+    selected = os.getenv("EMAIL_PROVIDER", "").strip().lower()
+    if not selected:
+        selected = "graph" if os.getenv("MS_GRAPH_TENANT_ID") else "smtp"
+    if selected == "graph":
+        return GraphEmailConfig.from_env()
+    return SMTPEmailConfig.from_env()
+
+
+def build_email_client(
+    settings: SMTPEmailConfig | GraphEmailConfig,
+) -> EmailClient:
+    if isinstance(settings, GraphEmailConfig):
+        return GraphEmailClient(settings)
+    return SMTPEmailClient(settings)
 
 
 def render_ticket_email(

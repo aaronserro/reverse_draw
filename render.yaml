@@ -16,13 +16,21 @@ services:
         sync: false
       - key: SECRET_KEY
         generateValue: true
-      - key: MS_GRAPH_TENANT_ID
+      - key: EMAIL_PROVIDER
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURITY
+        value: starttls
+      - key: SMTP_USERNAME
         sync: false
-      - key: MS_GRAPH_CLIENT_ID
-        sync: false
-      - key: MS_GRAPH_CLIENT_SECRET
+      - key: SMTP_PASSWORD
         sync: false
       - key: EMAIL_SENDER_ADDRESS
+        sync: false
+      - key: EMAIL_SENDER_NAME
         sync: false
       - key: PUBLIC_APP_URL
         sync: false

@@ -42,7 +42,7 @@ except ImportError:
 from . import config
 from .db import make_store
 from .draw import DrawError, ReverseDraw, current_schedule, now_iso
-from .email_service import EmailSendError, GraphEmailClient, GraphEmailConfig
+from .email_service import EmailSendError, build_email_client, email_config
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("reverse_draw")
@@ -788,13 +788,15 @@ def _expire_stale_batches(draw: ReverseDraw) -> None:
 
 def _notification_preview(draw: ReverseDraw) -> dict:
     """Pure current-state view of recipients with tickets not yet delivered."""
-    settings = GraphEmailConfig.from_env()
+    settings = email_config()
     current_source = _source_fingerprint(draw.source_dataframe)
     source_matches = bool(current_source) and (
         current_source == draw.allocation_source_fingerprint
     )
     result = {
         "configured": settings.configured,
+        "provider": settings.provider,
+        "sender": settings.sender,
         "missing_settings": settings.missing,
         "source_matches_allocation": source_matches,
         "allocation_fingerprint": _allocation_fingerprint(draw.owners),
@@ -869,7 +871,7 @@ def _notification_preview(draw: ReverseDraw) -> dict:
                     "name": recipient["name"],
                     "tickets": uncertain,
                     "reason": (
-                        "Microsoft Graph returned an uncertain result for these "
+                        "The email provider returned an uncertain result for these "
                         "tickets. Verify delivery before trying again."
                     ),
                 }
@@ -907,7 +909,9 @@ def _notification_preview(draw: ReverseDraw) -> dict:
     elif result["blocked"]:
         result["reason"] = "Fix the blocked recipients before sending."
     elif not settings.configured:
-        result["reason"] = "Microsoft Graph email settings are incomplete."
+        result["reason"] = (
+            f"{settings.provider.upper()} email settings are incomplete."
+        )
     elif not result["recipients"]:
         result["reason"] = "Everyone's current tickets have already been emailed."
     else:
@@ -987,7 +991,7 @@ def preview_notifications():
 
 def _process_notification_batch(batch_id: str, recipients: list[dict]) -> None:
     """Deliver one claimed batch and durably record every result."""
-    client = GraphEmailClient(GraphEmailConfig.from_env())
+    client = build_email_client(email_config())
     for recipient in recipients:
         job_status = "sent"
         sent_at = ""
@@ -1111,12 +1115,12 @@ def resolve_unknown_notification(body: ResolveUnknownIn):
             job.update(
                 status="sent",
                 sent_at=now_iso(),
-                error="Manually marked delivered after checking Microsoft 365.",
+                error="Manually marked delivered after checking the sender mailbox.",
             )
         else:
             job.update(
                 status="failed",
-                error="Manually cleared for retry after checking Microsoft 365.",
+                error="Manually cleared for retry after checking the sender mailbox.",
             )
         statuses = {item["status"] for item in batch["jobs"]}
         batch["status"] = "completed" if statuses == {"sent"} else "attention"

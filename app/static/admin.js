@@ -354,6 +354,7 @@
     $("emailStatus").innerHTML =
       `<div class="banner ${statusClass} email-status"><div><b>${RD.fmt(preview.pending_people)} pending recipient(s) · ` +
       `${RD.fmt(preview.pending_tickets)} new ticket(s)</b>` +
+      `<br><span class="small">Provider: ${RD.esc(preview.provider.toUpperCase())} · Sender: ${RD.esc(preview.sender || "not set")}</span>` +
       `${preview.reason ? `<br>${RD.esc(preview.reason)}` : ""}` +
       `${preview.missing_settings.length ? `<br><span class="small">Missing: ${preview.missing_settings.map(RD.esc).join(", ")}</span>` : ""}</div></div>`;
 
@@ -379,7 +380,7 @@
         return `<li><b>${RD.esc(job.name)}</b> · ${RD.esc(job.status)}${job.error ? ` — ${RD.esc(job.error)}` : ""}${resolution}</li>`;
       }).join("");
       return `<details class="round"><summary><span><b>${RD.esc(batch.status)}</b> <span class="muted">· ${sent}/${batch.jobs.length} sent${issues ? ` · ${issues} need attention` : ""}</span></span><span class="muted small">${RD.fmtTime(batch.created_at)}</span></summary>` +
-        `<div class="body small">${details ? `<ul class="email-errors">${details}</ul>` : "All messages were accepted by Microsoft Graph."}</div></details>`;
+        `<div class="body small">${details ? `<ul class="email-errors">${details}</ul>` : "All messages were accepted by the email provider."}</div></details>`;
     }).join("");
     $("emailHistory").innerHTML = `<div class="section-title">Recent batches</div>${history || `<p class="muted">No email batches have been sent.</p>`}`;
 
@@ -446,7 +447,7 @@
     if (!notificationPreview?.ready) return;
     const ok = await RD.confirm({
       title: `Email ${notificationPreview.pending_people} recipient(s)?`,
-      body: `${notificationPreview.pending_tickets} new ticket(s) will be sent as separate personalized Microsoft 365 messages. Review the list before continuing.`,
+      body: `${notificationPreview.pending_tickets} new ticket(s) will be sent as separate personalized messages. Review the list before continuing.`,
       confirmText: "Send all emails",
     });
     if (!ok) return;

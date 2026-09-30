@@ -7,7 +7,7 @@ import pandas as pd
 
 from app.draw import ReverseDraw
 from app.db import SQLiteStore
-from app.email_service import render_ticket_email
+from app.email_service import SMTPEmailConfig, email_config, render_ticket_email
 from app import main
 from app.main import (
     _notification_preview,
@@ -21,6 +21,7 @@ class NotificationPreviewTests(unittest.TestCase):
         self.previous_env = {
             name: os.environ.get(name)
             for name in (
+                "EMAIL_PROVIDER",
                 "MS_GRAPH_TENANT_ID",
                 "MS_GRAPH_CLIENT_ID",
                 "MS_GRAPH_CLIENT_SECRET",
@@ -30,6 +31,7 @@ class NotificationPreviewTests(unittest.TestCase):
         }
         os.environ.update(
             {
+                "EMAIL_PROVIDER": "graph",
                 "MS_GRAPH_TENANT_ID": "tenant",
                 "MS_GRAPH_CLIENT_ID": "client",
                 "MS_GRAPH_CLIENT_SECRET": "secret",
@@ -148,13 +150,29 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("&lt;Jane&gt;", html_body)
         self.assertIn("#7, #9", text_body)
 
+    def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
+        values = {
+            "EMAIL_PROVIDER": "smtp",
+            "SMTP_HOST": "smtp.gmail.com",
+            "SMTP_PORT": "587",
+            "SMTP_SECURITY": "starttls",
+            "SMTP_USERNAME": "draw.sender@gmail.com",
+            "SMTP_PASSWORD": "example-app-password",
+            "EMAIL_SENDER_NAME": "Fundraiser Draw",
+            "EMAIL_SENDER_ADDRESS": "",
+            "PUBLIC_APP_URL": "https://draw.example.com",
+        }
+        with patch.dict(os.environ, values, clear=False):
+            settings = email_config()
+        self.assertIsInstance(settings, SMTPEmailConfig)
+        self.assertTrue(settings.configured)
+        self.assertEqual(settings.sender, "draw.sender@gmail.com")
+        self.assertEqual(settings.sender_name, "Fundraiser Draw")
+
 
 class BatchProcessingTests(unittest.TestCase):
     def test_successful_graph_response_is_persisted(self):
         class FakeClient:
-            def __init__(self, _settings):
-                pass
-
             def send_ticket_email(self, **_message):
                 return {"status_code": 202, "request_id": "request-123"}
 
@@ -182,7 +200,9 @@ class BatchProcessingTests(unittest.TestCase):
                 with test_store.transaction() as box:
                     box.data = draw.to_dict()
 
-                with patch("app.main.GraphEmailClient", FakeClient):
+                with patch(
+                    "app.main.build_email_client", return_value=FakeClient()
+                ):
                     _process_notification_batch(
                         "batch-1",
                         [
