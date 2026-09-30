@@ -31,6 +31,8 @@ class DynamicScheduleTests(unittest.TestCase):
                 "app.config.ROUND_LABELS",
                 ["Round 1", "Round 2", "Round 3", "Round 4", "Grand Prize"],
             ),
+            patch("app.config.ROUND_KINDS", ["elimination"] * 5),
+            patch("app.config.ROUND_PRIZES", [""] * 5),
         ):
             draw = ReverseDraw(stored)
 
@@ -64,11 +66,65 @@ class DynamicScheduleTests(unittest.TestCase):
             patch("app.config.TOTAL_TICKETS", 1000),
             patch("app.config.ROUND_SURVIVORS", [400, 200, 1]),
             patch("app.config.ROUND_LABELS", ["Round 1", "Round 2", "Final"]),
+            patch("app.config.ROUND_KINDS", ["elimination"] * 3),
+            patch("app.config.ROUND_PRIZES", [""] * 3),
         ):
             draw = ReverseDraw(stored)
 
-        self.assertEqual(draw.schedule, stored["schedule"])
+        self.assertEqual(draw.survivors, stored["schedule"]["survivors"])
+        self.assertEqual(draw.labels, stored["schedule"]["labels"])
         self.assertTrue(draw.schedule_pending)
+
+    def test_configured_draw_stops_with_ten_finalists(self):
+        draw = ReverseDraw()
+        records = [draw.run_next_round() for _ in draw.survivors]
+
+        self.assertEqual(
+            [
+                record["started_with"] - record["survivors"]
+                for record in records
+            ],
+            [500, 1, 199, 1, 199, 1, 89],
+        )
+        self.assertEqual(
+            [record["kind"] for record in records],
+            [
+                "elimination",
+                "prize",
+                "elimination",
+                "prize",
+                "elimination",
+                "prize",
+                "elimination",
+            ],
+        )
+        prize_records = [
+            record for record in records if record["kind"] == "prize"
+        ]
+        self.assertTrue(
+            all(len(record["eliminated"]) == 1 for record in prize_records)
+        )
+        self.assertEqual(len(draw.active()), 10)
+        self.assertTrue(draw.finished)
+        self.assertTrue(
+            all(draw.status(ticket) == "FINALIST" for ticket in draw.active())
+        )
+        first_gift_winner = prize_records[0]["eliminated"][0]
+        self.assertEqual(draw.status(first_gift_winner), "Gift Card 1 winner")
+
+    def test_undo_gift_card_stage_restores_selected_ticket(self):
+        draw = ReverseDraw()
+        draw.run_next_round()
+        gift_record = draw.run_next_round()
+        winning_ticket = gift_record["eliminated"][0]
+
+        undone = draw.undo_last_round()
+
+        self.assertEqual(undone["kind"], "prize")
+        self.assertEqual(undone["prize"], "Gift Card 1")
+        self.assertIn(winning_ticket, draw.active())
+        self.assertEqual(draw.status(winning_ticket), "Still in")
+        self.assertEqual(len(draw.active()), 500)
 
 
 if __name__ == "__main__":

@@ -160,10 +160,19 @@ Microsoft Graph remains supported for existing deployments by setting
 - If the admin page ever shows a red "No database is connected" banner, `DATABASE_URL` isn't set, and nothing will survive a restart.
 
 ## How the draw works
-- Each round picks the survivors uniformly at random from the tickets still in, using a fresh cryptographic seed. The seed is saved in the log.
+- The seven draw stages remove `500 → 1 → 199 → 1 → 199 → 1 → 89`
+  tickets, leaving exactly 10 finalists.
+- Each one-ticket stage selects a gift-card winner. That ticket wins its gift
+  card and leaves the grand-prize pool before the next elimination stage.
+- Every selection is uniform and uses a fresh cryptographic seed saved in the
+  audit log. The application stops after confirming the 10 finalists.
 - The entire draw is stored as one JSON row in Postgres. Every change locks that row, so a double-click or a second admin tab can't run the same round twice.
-- **Undo** puts the last round's tickets back in. The undone round is kept in an audit trail on the Elimination log tab.
-- By default, holder names are **not** exposed on the public page. The public lookup works by ticket number only, and the winner's name appears in the final announcement. To change this, use `PUBLIC_SHOW_HOLDER_NAMES` and `PUBLIC_SHOW_WINNER_NAME` in `config.py`.
+- **Undo** reverses the last stage. For a gift-card stage, it also removes that
+  recorded gift-card result. Undone stages remain in the audit trail.
+- By default, holder names are **not** exposed on the public page. The public
+  lookup works by ticket number only, and finalist names appear in the final
+  announcement. To change this, use `PUBLIC_SHOW_HOLDER_NAMES` and
+  `PUBLIC_SHOW_WINNER_NAME` in `config.py`.
 
 ## Holder CSV format
 ```

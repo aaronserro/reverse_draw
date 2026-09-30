@@ -83,17 +83,17 @@
   // straight from config.py via /api/config.
   function renderLanding() {
     const s = cfg.schedule;
-    const winners = s.survivors[s.survivors.length - 1];
+    const finalists = s.survivors[s.survivors.length - 1];
     const nRounds = s.labels.length;
     $("landingEyebrow").textContent = `${cfg.posted_in} · ${cfg.org_name}`;
     $("landingLead").textContent =
       `The ${cfg.org_name} starts with ${RD.fmt(s.total)} tickets and ends with ` +
-      `${winners === 1 ? "one winner" : `${RD.fmt(winners)} winners`} of ${cfg.prize_text}. ` +
+      `${finalists === 1 ? `one ${s.completion_label.toLowerCase()}` : `${RD.fmt(finalists)} ${s.completion_label_plural.toLowerCase()}`}. ` +
       `Enter the code from your invitation to follow along.`;
     $("landingFacts").innerHTML = [
       [RD.fmt(s.total), "tickets to start"],
       [nRounds, nRounds === 1 ? "round" : "rounds"],
-      [RD.fmt(winners), winners === 1 ? "winner" : "winners"],
+      [RD.fmt(finalists), finalists === 1 ? s.completion_label.toLowerCase() : s.completion_label_plural.toLowerCase()],
     ].map(([n, k]) => `<div class="fact"><span class="n">${n}</span><span class="k">${k}</span></div>`).join("");
     $("landingNote").textContent = cfg.closing_note;
     $("landingRefresh").textContent = refreshText();
@@ -103,17 +103,19 @@
     const s = cfg.schedule;
     const finalCount = s.survivors[s.survivors.length - 1];
     const finalLabel = s.labels[s.labels.length - 1];
+    const prizeDraws = s.kinds.filter((kind) => kind === "prize").length;
     $("how1").textContent =
       `All ${RD.fmt(s.total)} tickets are in the running for ${cfg.prize_text}. Nobody has to do anything to stay in.`;
     $("how2").textContent =
-      `Across ${s.labels.length} rounds the board is cut down: ` +
-      `${RD.fmt(s.total)} → ${s.survivors.map(RD.fmt).join(" → ")}. Green squares are still in.`;
+      `Across ${s.labels.length} stages, elimination rounds alternate with ${prizeDraws} gift-card draws: ` +
+      `${RD.fmt(s.total)} → ${s.survivors.map(RD.fmt).join(" → ")}. Gift-card winners leave the grand-prize pool.`;
     $("how3Title").textContent = finalCount === 1
-      ? "One winning ticket remains"
-      : `${RD.fmt(finalCount)} winning tickets remain`;
+      ? `One ${s.completion_label.toLowerCase()} remains`
+      : `${RD.fmt(finalCount)} ${s.completion_label_plural.toLowerCase()} remain`;
     $("how3").textContent =
-      `${finalLabel} leaves ${RD.fmt(finalCount)} ${finalCount === 1 ? "winner" : "winners"} ` +
-      `for ${cfg.prize_text}. ${cfg.closing_note}`;
+      `${finalLabel} leaves ${RD.fmt(finalCount)} ` +
+      `${finalCount === 1 ? s.completion_label.toLowerCase() : s.completion_label_plural.toLowerCase()}. ` +
+      `The online draw stops there. ${cfg.closing_note}`;
   }
 
   // ================================================================ board page
@@ -136,7 +138,9 @@
       const s = RD.ticketStatus(state, t);
       const who = state.holders && state.holders[t] ? ` · ${RD.esc(state.holders[t])}` : "";
       if (s.cls === "win")
-        return `<div class="res win"><div class="res-icon">★</div><div><div class="res-title">Ticket #${t} is a winner!</div><div class="res-sub">Congratulations${who}</div></div></div>`;
+        return `<div class="res win"><div class="res-icon">★</div><div><div class="res-title">Ticket #${t} is a ${RD.esc(state.schedule.completion_label.toLowerCase())}!</div><div class="res-sub">Congratulations${who}</div></div></div>`;
+      if (s.cls === "prize")
+        return `<div class="res prize"><div class="res-icon">★</div><div><div class="res-title">Ticket #${t} won a gift card!</div><div class="res-sub">${RD.esc(s.text)}${who} · Removed from the grand-prize pool</div></div></div>`;
       if (s.cls === "in") {
         const next = state.next_label ? `Next up: ${RD.esc(state.next_label)}` : "";
         return `<div class="res in"><div class="res-icon">✓</div><div><div class="res-title">Ticket #${t} is still in!</div><div class="res-sub">${next}${who}</div></div></div>`;
@@ -161,16 +165,22 @@
       const rec = state.rounds[i];
       const final = i === s.labels.length - 1 ? " final" : "";
       if (rec) {
+        const result = rec.kind === "prize"
+          ? `${RD.esc(rec.prize || "Gift card")} winner: ${rec.selected_tickets.map((ticket) => `#${ticket}`).join(", ")}`
+          : `${RD.fmt(rec.eliminated_count)} out`;
         return `<li class="${final.trim()}"><span class="dot">${i + 1}</span>` +
           `<span class="r-main"><b>${RD.esc(rec.label)}</b> · ${RD.fmt(rec.started_with)} → ${RD.fmt(rec.survivors)} ` +
-          `<span class="r-sub">(${RD.fmt(rec.eliminated_count)} out)</span></span>` +
+          `<span class="r-sub">(${result})</span></span>` +
           `<span class="r-when">${RD.fmtTime(rec.timestamp)}</span></li>`;
       }
       const from = i === 0 ? s.total : s.survivors[i - 1];
       const to = s.survivors[i];
+      const upcoming = s.kinds[i] === "prize"
+        ? `1 ${RD.esc(s.prizes[i] || "gift card")} winner`
+        : `${RD.fmt(from - to)} out`;
       return `<li class="todo${final}"><span class="dot">${i + 1}</span>` +
         `<span class="r-main"><b>${RD.esc(label)}</b> · ${RD.fmt(from)} → ${RD.fmt(to)} ` +
-        `<span class="r-sub">(${RD.fmt(from - to)} out)</span></span>` +
+        `<span class="r-sub">(${upcoming})</span></span>` +
         `<span class="r-when"><span class="tag">${i === state.rounds_done ? "Up next" : "Upcoming"}</span></span></li>`;
     }).join("");
   }
@@ -199,9 +209,12 @@
           fresh = new Set();
           s.status.forEach((r, i) => { if (r === s.rounds_done) fresh.add(i + 1); });
           const last = s.rounds[s.rounds.length - 1];
-          const winnerCount = s.winners.length;
+          const resultCount = s.winners.length;
+          const resultLabel = resultCount === 1
+            ? s.schedule.completion_label.toLowerCase()
+            : s.schedule.completion_label_plural.toLowerCase();
           RD.toast(s.finished
-            ? `${RD.fmt(winnerCount)} ${winnerCount === 1 ? "winner has" : "winners have"} been drawn!`
+            ? `${RD.fmt(resultCount)} ${resultLabel} confirmed!`
             : `${last.label} results are in: ${RD.fmt(last.survivors)} tickets left`);
         }
         state = s;
@@ -233,7 +246,11 @@
   // ================================================================ start
   cfg = await RD.api("/api/config");
   RD.applyConfig(cfg);
-  $("legend").innerHTML = RD.legendHTML("Your ticket");
+  $("legend").innerHTML = RD.legendHTML(
+    "Your ticket",
+    cfg.schedule.kinds.includes("prize"),
+    cfg.schedule.completion_label,
+  );
   $("closingNote").textContent = cfg.closing_note;
   $("refreshNote").textContent = refreshText();
   renderLanding();

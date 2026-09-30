@@ -18,14 +18,48 @@ CLOSING_NOTE = "Finalists will be announced at the in-person Closing Ceremony."
 # --- Draw schedule -----------------------------------------------------------
 TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
 
-# Tickets still in after each round. Must be strictly decreasing.
-# The last number is how many winners there are (usually 1).
-ROUND_SURVIVORS = [500, 301, 102, 89, 13]
+# Tickets still eligible for the grand prize after each stage. Gift-card
+# winners leave the pool, which is why each gift-card stage decreases by 1.
+ROUND_SURVIVORS = [500, 499, 300, 299, 100, 99, 10]
 
-# One label per round (same length as ROUND_SURVIVORS).
-ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Round 4", "Grand Prize"]
+# One label per stage (same length as ROUND_SURVIVORS).
+ROUND_LABELS = [
+    "Round 1",
+    "Gift Card Draw 1",
+    "Round 2",
+    "Gift Card Draw 2",
+    "Round 3",
+    "Gift Card Draw 3",
+    "Round 4",
+]
 
-# Completed round targets are frozen for audit safety. Future targets and labels
+# `elimination` removes the configured number of tickets. `prize` selects the
+# one removed ticket as a gift-card winner and records that result separately.
+ROUND_KINDS = [
+    "elimination",
+    "prize",
+    "elimination",
+    "prize",
+    "elimination",
+    "prize",
+    "elimination",
+]
+ROUND_PRIZES = [
+    "",
+    "Gift Card 1",
+    "",
+    "Gift Card 2",
+    "",
+    "Gift Card 3",
+    "",
+]
+
+# The draw intentionally stops with finalists; it does not select the grand-
+# prize winner in this application.
+COMPLETION_LABEL = "Finalist"
+COMPLETION_LABEL_PLURAL = "Finalists"
+
+# Completed targets are frozen for audit safety. Future targets and labels
 # update dynamically when the completed targets still match; otherwise reset.
 
 # None = a fresh cryptographically random seed each round (logged for audit).
@@ -52,6 +86,7 @@ COLOR_ACTIVE = "#2e8b47"             # Still in
 COLOR_ELIMINATED = "#dcdfe0"         # Out in an earlier round
 COLOR_LAST_ROUND = "#8b949c"         # Out in the most recent round
 COLOR_WINNER = "#e8a900"             # Winner(s)
+COLOR_PRIZE = "#7651a8"              # Gift-card winner
 COLOR_HIGHLIGHT = "#1e6fd9"          # Squares matching the search box
 
 # --- Admin -------------------------------------------------------------------

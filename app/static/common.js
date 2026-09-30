@@ -32,6 +32,7 @@ RD.applyConfig = function (cfg) {
   r.setProperty("--c-out", cfg.colors.eliminated);
   r.setProperty("--c-last", cfg.colors.last_round);
   r.setProperty("--c-win", cfg.colors.winner);
+  r.setProperty("--c-prize", cfg.colors.prize);
   r.setProperty("--c-hl", cfg.colors.highlight);
   document.querySelectorAll("[data-org-name]").forEach((el) => (el.textContent = cfg.org_name));
   document.querySelectorAll("[data-org-initials]").forEach((el) => (el.textContent = cfg.org_initials));
@@ -43,8 +44,14 @@ RD.remaining = (state) => state.status.filter((r) => r === 0).length;
 
 RD.ticketStatus = function (state, t) {
   const r = state.status[t - 1];
-  if (r) return { cls: "out", text: `Eliminated in ${state.schedule.labels[r - 1]}` };
-  if (state.finished) return { cls: "win", text: "Winner" };
+  if (r) {
+    const round = state.rounds[r - 1];
+    if (round?.kind === "prize") {
+      return { cls: "prize", text: `${round.prize || round.label} winner` };
+    }
+    return { cls: "out", text: `Eliminated in ${state.schedule.labels[r - 1]}` };
+  }
+  if (state.finished) return { cls: "win", text: state.schedule.completion_label };
   return { cls: "in", text: "Still in" };
 };
 
@@ -73,7 +80,8 @@ RD.renderBoard = function (el, cfg, state, { highlight = null, holders = null, f
   const parts = [];
   for (let t = 1; t <= state.schedule.total; t++) {
     const r = state.status[t - 1];
-    let cls = winners.has(t) ? "win" : !r ? "active" : cfg.highlight_last_round && r === last ? "last" : "out";
+    const prize = r && state.rounds[r - 1]?.kind === "prize";
+    let cls = winners.has(t) ? "win" : prize ? "prize" : !r ? "active" : cfg.highlight_last_round && r === last ? "last" : "out";
     let style = "";
     if (fresh && fresh.has(t)) {
       cls += " fresh";
@@ -89,11 +97,12 @@ RD.renderBoard = function (el, cfg, state, { highlight = null, holders = null, f
 };
 
 // `matchLabel` names the highlight swatch; omit it to leave that entry out.
-RD.legendHTML = (matchLabel = "") =>
+RD.legendHTML = (matchLabel = "", includePrize = false, resultLabel = "Finalist") =>
   `<span><i style="background:var(--c-active)"></i>Still in</span>` +
   `<span><i style="background:var(--c-last)"></i>Out this round</span>` +
   `<span><i style="background:var(--c-out)"></i>Out earlier</span>` +
-  `<span><i style="background:var(--c-win)"></i>Winner</span>` +
+  (includePrize ? `<span><i style="background:var(--c-prize)"></i>Gift-card winner</span>` : "") +
+  `<span><i style="background:var(--c-win)"></i>${RD.esc(resultLabel)}</span>` +
   (matchLabel ? `<span><i style="background:var(--c-hl)"></i>${RD.esc(matchLabel)}</span>` : "");
 
 // ---------------------------------------------------------------- announcement
@@ -111,14 +120,26 @@ RD.announcement = function (cfg, state) {
   if (state.finished) {
     const who = state.winners.map((w) => `#${w.ticket}${w.holder ? ` (${w.holder})` : ""}`);
     const one = who.length === 1;
+    const result = one
+      ? s.completion_label.toLowerCase()
+      : s.completion_label_plural.toLowerCase();
     return {
       eyebrow: `Draw complete · ${s.labels[nRounds - 1]}`,
-      headline: one ? "We have a winner!" : `We have ${RD.fmt(who.length)} winners!`,
-      text: `Congratulations to winning ${one ? "ticket" : "tickets"} ${who.join(", ")}! ` +
-        `${one ? "It is" : "They are"} the ${one ? "final ticket" : "final tickets"} remaining for ${cfg.prize_text}.`,
+      headline: `We have ${one ? "our" : RD.fmt(who.length)} ${result}!`,
+      text: `${one ? "Ticket" : "Tickets"} ${who.join(", ")} ${one ? "is" : "are"} ` +
+        `the ${result} remaining. ${cfg.closing_note}`,
     };
   }
   const last = state.rounds[state.rounds.length - 1];
+  if (last.kind === "prize") {
+    const selected = last.selected_tickets.map((ticket) => `#${ticket}`).join(", ");
+    return {
+      eyebrow: `${last.label} complete · ${state.rounds_done} of ${nRounds}`,
+      headline: `${last.prize || "Gift card"} winner drawn!`,
+      text: `Congratulations to ticket ${selected}. It wins the gift card and leaves the grand-prize pool. ` +
+        `${RD.fmt(last.survivors)} tickets remain in the reverse draw.`,
+    };
+  }
   return {
     eyebrow: `${last.label} complete · ${state.rounds_done} of ${nRounds}`,
     headline: "Are you still in it?",
@@ -132,12 +153,24 @@ RD.announcement = function (cfg, state) {
 RD.renderHero = function (el, cfg, state) {
   const a = RD.announcement(cfg, state);
   el.classList.toggle("win", state.finished);
-  const winners = state.finished && state.winners.length
-    ? `<div class="winner-cards">` + state.winners.map((w) =>
-        `<div class="winner-card"><span class="k">Winning ticket</span><span class="n">#${w.ticket}</span>` +
-        (w.holder ? `<span class="who">${RD.esc(w.holder)}</span>` : "") +
-        `<span class="prize">${RD.esc(cfg.prize_text)}</span></div>`).join("") + `</div>`
-    : "";
+  const last = state.rounds[state.rounds.length - 1];
+  let resultCards = "";
+  if (state.finished && state.winners.length) {
+    const label = state.winners.length === 1
+      ? state.schedule.completion_label
+      : state.schedule.completion_label_plural;
+    const numbers = state.winners.map((w) =>
+      `#${w.ticket}${w.holder ? ` · ${RD.esc(w.holder)}` : ""}`
+    ).join("<br>");
+    resultCards = `<div class="winner-cards"><div class="winner-card">` +
+      `<span class="k">${RD.esc(label)}</span><span class="winner-list">${numbers}</span>` +
+      `<span class="prize">${RD.esc(cfg.closing_note)}</span></div></div>`;
+  } else if (last?.kind === "prize") {
+    const numbers = last.selected_tickets.map((ticket) => `#${ticket}`).join(", ");
+    resultCards = `<div class="winner-cards"><div class="winner-card prize-winner">` +
+      `<span class="k">${RD.esc(last.prize || "Gift card winner")}</span>` +
+      `<span class="n">${RD.esc(numbers)}</span></div></div>`;
+  }
   const meta = state.finished ? ""
     : `<div class="hero-meta"><span class="prize-chip">🏆 ${RD.esc(cfg.prize_text)}</span>` +
       `<span class="muted small">${RD.esc(cfg.closing_note)}</span></div>`;
@@ -147,7 +180,7 @@ RD.renderHero = function (el, cfg, state) {
       `<div class="eyebrow"><i></i>${RD.esc(a.eyebrow)}</div>` +
       `<h1>${RD.esc(a.headline)}</h1>` +
       `<p class="lead">${RD.esc(a.text)}</p>` + meta +
-    `</div>` + winners + `</div>`;
+    `</div>` + resultCards + `</div>`;
 };
 
 // ---------------------------------------------------------------- toast & modal

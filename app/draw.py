@@ -47,17 +47,58 @@ def current_schedule() -> dict:
         "total": int(config.TOTAL_TICKETS),
         "survivors": [int(n) for n in config.ROUND_SURVIVORS],
         "labels": [str(s) for s in config.ROUND_LABELS],
+        "kinds": [str(s) for s in config.ROUND_KINDS],
+        "prizes": [str(s) for s in config.ROUND_PRIZES],
+        "completion_label": str(config.COMPLETION_LABEL),
+        "completion_label_plural": str(config.COMPLETION_LABEL_PLURAL),
+    }
+
+
+def normalize_schedule(schedule: dict) -> dict:
+    survivors = [int(n) for n in schedule["survivors"]]
+    labels = [str(s) for s in schedule["labels"]]
+    return {
+        "total": int(schedule["total"]),
+        "survivors": survivors,
+        "labels": labels,
+        "kinds": [
+            str(s)
+            for s in schedule.get("kinds", ["elimination"] * len(labels))
+        ],
+        "prizes": [str(s) for s in schedule.get("prizes", [""] * len(labels))],
+        "completion_label": str(schedule.get("completion_label", "Winner")),
+        "completion_label_plural": str(
+            schedule.get("completion_label_plural", "Winners")
+        ),
     }
 
 
 def validate_schedule(s: dict) -> None:
-    if len(s["survivors"]) != len(s["labels"]):
-        raise DrawError("ROUND_SURVIVORS and ROUND_LABELS must be the same length.")
+    lengths = {
+        len(s["survivors"]),
+        len(s["labels"]),
+        len(s["kinds"]),
+        len(s["prizes"]),
+    }
+    if len(lengths) != 1:
+        raise DrawError(
+            "ROUND_SURVIVORS, ROUND_LABELS, ROUND_KINDS, and ROUND_PRIZES "
+            "must be the same length."
+        )
     prev = s["total"]
-    for n in s["survivors"]:
+    for index, n in enumerate(s["survivors"]):
         if not 0 < n < prev:
             raise DrawError(
                 f"ROUND_SURVIVORS must be strictly decreasing from {s['total']}; got {s['survivors']}."
+            )
+        kind = s["kinds"][index]
+        if kind not in {"elimination", "prize"}:
+            raise DrawError(
+                "ROUND_KINDS entries must be elimination or prize."
+            )
+        if kind == "prize" and prev - n != 1:
+            raise DrawError(
+                "Every prize stage must select exactly one ticket."
             )
         prev = n
 
@@ -81,7 +122,9 @@ class ReverseDraw:
         data = data or {}
         rounds = data.get("rounds") or []
         configured_schedule = current_schedule()
-        stored_schedule = data.get("schedule") or configured_schedule
+        stored_schedule = normalize_schedule(
+            data.get("schedule") or configured_schedule
+        )
         self.schedule_pending = False
         if rounds and not compatible_schedule(
             rounds, stored_schedule, configured_schedule
@@ -95,9 +138,22 @@ class ReverseDraw:
             # future targets or append/remove future rounds. Preserve completed
             # labels because they are part of the historical audit record.
             labels = list(configured_schedule["labels"])
+            kinds = list(configured_schedule["kinds"])
+            prizes = list(configured_schedule["prizes"])
             for index, rec in enumerate(rounds):
                 labels[index] = str(rec["label"])
-            self.schedule = {**configured_schedule, "labels": labels}
+                kinds[index] = str(
+                    rec.get("kind") or stored_schedule["kinds"][index]
+                )
+                prizes[index] = str(
+                    rec.get("prize") or stored_schedule["prizes"][index]
+                )
+            self.schedule = {
+                **configured_schedule,
+                "labels": labels,
+                "kinds": kinds,
+                "prizes": prizes,
+            }
         validate_schedule(self.schedule)
         self.owners: dict[int, str] = {}
         self.rounds: list[dict] = []
@@ -143,6 +199,14 @@ class ReverseDraw:
         return self.schedule["survivors"]
 
     @property
+    def kinds(self) -> list[str]:
+        return self.schedule["kinds"]
+
+    @property
+    def prizes(self) -> list[str]:
+        return self.schedule["prizes"]
+
+    @property
     def rounds_done(self) -> int:
         return len(self.rounds)
 
@@ -169,8 +233,13 @@ class ReverseDraw:
     def status(self, t: int) -> str:
         r = self.eliminated_in.get(t)
         if r:
+            rec = self.rounds[r - 1]
+            if rec.get("kind") == "prize":
+                return f"{rec.get('prize') or rec['label']} winner"
             return f"Eliminated in {self.labels[r - 1]}"
-        return "WINNER" if self.finished else "Still in"
+        if self.finished:
+            return self.schedule["completion_label"].upper()
+        return "Still in"
 
     def status_array(self) -> list[int]:
         """Index i -> round ticket i+1 was eliminated in (0 = still in)."""
@@ -178,6 +247,10 @@ class ReverseDraw:
 
     # ---- actions ------------------------------------------------------------
     def _apply(self, rec: dict) -> None:
+        rec = dict(rec)
+        index = int(rec["round"]) - 1
+        rec.setdefault("kind", self.kinds[index])
+        rec.setdefault("prize", self.prizes[index])
         self.rounds.append(rec)
         for t in rec["eliminated"]:
             self.eliminated_in[t] = rec["round"]
@@ -193,6 +266,8 @@ class ReverseDraw:
         rec = {
             "round": idx + 1,
             "label": self.labels[idx],
+            "kind": self.kinds[idx],
+            "prize": self.prizes[idx],
             "timestamp": now_iso(),
             "seed": str(seed),
             "started_with": len(pool),
@@ -216,6 +291,7 @@ class ReverseDraw:
         self.eliminated_in.clear()
         self.undone.clear()
         self.schedule = current_schedule()
+        self.schedule_pending = False
         validate_schedule(self.schedule)
         if not keep_owners:
             self.owners.clear()

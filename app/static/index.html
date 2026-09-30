@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=12">
+  <link rel="stylesheet" href="/static/styles.css?v=13">
 </head>
 <body>
 
@@ -80,7 +80,7 @@
       <div class="nav-right">
         <nav class="nav-links">
           <a class="on" href="#top">Board</a>
-          <a href="#rounds">Rounds</a>
+          <a href="#rounds">Draw stages</a>
           <a href="#how">How it works</a>
         </nav>
         <span class="nav-sep"></span>
@@ -99,7 +99,7 @@
     <div class="stats">
       <div class="stat green"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
       <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
-      <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
+      <div class="stat"><div class="k">Stages complete</div><div class="v" id="statRound">–</div></div>
     </div>
 
     <article class="card">
@@ -127,7 +127,7 @@
       </section>
 
       <section class="card" id="rounds">
-        <h2>Rounds</h2>
+        <h2>Draw stages</h2>
         <ol class="rounds" id="history"></ol>
       </section>
     </div>
@@ -136,7 +136,7 @@
       <h2>How it works</h2>
       <div class="how">
         <div class="step"><div class="n">1</div><b>Everyone starts in</b><p id="how1"></p></div>
-        <div class="step"><div class="n">2</div><b>Each round cuts the field</b><p id="how2"></p></div>
+        <div class="step"><div class="n">2</div><b>Each stage narrows the field</b><p id="how2"></p></div>
         <div class="step"><div class="n">3</div><b id="how3Title"></b><p id="how3"></p></div>
       </div>
     </section>
@@ -144,14 +144,14 @@
 
   <footer class="page-foot">
     <div class="inner">
-      <span>Each round draws survivors at random using a fresh cryptographic seed, recorded for audit.</span>
+      <span>Every elimination and gift-card selection uses a fresh random seed, recorded for audit.</span>
       <span id="refreshNote"></span>
     </div>
   </footer>
 </div>
 
-<script src="/static/common.js?v=12"></script>
-<script src="/static/pwa.js?v=12"></script>
-<script src="/static/public.js?v=12"></script>
+<script src="/static/common.js?v=13"></script>
+<script src="/static/pwa.js?v=13"></script>
+<script src="/static/public.js?v=13"></script>
 </body>
 </html>

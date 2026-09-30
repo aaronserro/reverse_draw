@@ -232,8 +232,10 @@ label.check input { width: 18px; height: 18px; accent-color: var(--teal); }
 }
 .winner-card .k { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-ink); }
 .winner-card .n { font: 600 clamp(44px, 5vw, 64px)/1 var(--serif); font-variant-numeric: lining-nums tabular-nums; }
+.winner-card .winner-list { font: 600 24px/1.5 var(--serif); font-variant-numeric: lining-nums tabular-nums; }
 .winner-card .who { font-weight: 500; font-size: 17px; }
 .winner-card .prize { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); font-weight: 600; font-size: 20px; color: var(--teal); }
+.winner-card.prize-winner { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c-prize) 40%, transparent); }
 
 /* hero rendered inside a card (admin) */
 .card.hero { padding: 26px 28px; }
@@ -280,16 +282,18 @@ label.check input { width: 18px; height: 18px; accent-color: var(--teal); }
 .cell.active { background: var(--c-active); color: #fff; }
 .cell.out    { background: var(--c-out); color: #6b747c; }
 .cell.last   { background: var(--c-last); color: #fff; }
+.cell.prize  { background: var(--c-prize); color: #fff; font-weight: 700; }
 .cell.win    { background: var(--c-win); color: #14202b; font-weight: 700; position: relative; z-index: 2;
                box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--c-win); }
 .cell.fresh  { animation: knock .9s ease both; }
 @keyframes knock {
-  0%   { background: var(--c-active); color: #fff; transform: scale(1); }
-  45%  { transform: scale(.72); }
-  100% { transform: scale(1); }
+  0%   { transform: scale(1); filter: brightness(1); }
+  45%  { transform: scale(.72); filter: brightness(1.35); }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 .board.searching .cell { opacity: .2; }
 .board.searching .cell.win { opacity: 1; }
+.board.searching .cell.prize { opacity: 1; }
 .board.searching .cell.hl {
   opacity: 1; background: var(--c-hl); color: #fff; font-weight: 700;
   position: relative; z-index: 3; transform: scale(1.35);
@@ -311,6 +315,8 @@ label.check input { width: 18px; height: 18px; accent-color: var(--teal); }
 .res.in  { background: var(--green-soft); border-color: var(--green-line); }
 .res.in .res-icon  { background: var(--green); color: #fff; }
 .res.out .res-icon { background: var(--surface-3); color: var(--muted); }
+.res.prize { background: #f1ebf8; border-color: #d6c6e8; }
+.res.prize .res-icon { background: var(--c-prize); color: #fff; }
 .res.win { background: var(--gold-soft); border-color: #eddaa6; }
 .res.win .res-icon { background: var(--gold); color: #3d2c00; }
 .res.none .res-icon { background: var(--surface-3); color: var(--muted-2); }
@@ -336,6 +342,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--teal); }
 .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-3); color: var(--text-2); }
 .tag.in { background: var(--green-soft); color: #1f6b33; }
 .tag.out { background: #eceeef; color: var(--text-2); }
+.tag.prize { background: #f1ebf8; color: #5d3889; }
 .tag.win { background: var(--gold-soft); color: var(--gold-ink); }
 
 /* ------------------------------------------------------------------ how it works */

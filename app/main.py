@@ -116,6 +116,11 @@ def round_summary(rec: dict) -> dict:
     return {
         "round": rec["round"],
         "label": rec["label"],
+        "kind": rec.get("kind", "elimination"),
+        "prize": rec.get("prize", ""),
+        "selected_tickets": (
+            rec["eliminated"] if rec.get("kind") == "prize" else []
+        ),
         "timestamp": rec["timestamp"],
         "started_with": rec["started_with"],
         "survivors": rec["survivors"],
@@ -348,6 +353,7 @@ def get_config():
             "eliminated": config.COLOR_ELIMINATED,
             "last_round": config.COLOR_LAST_ROUND,
             "winner": config.COLOR_WINNER,
+            "prize": config.COLOR_PRIZE,
             "highlight": config.COLOR_HIGHLIGHT,
         },
     }

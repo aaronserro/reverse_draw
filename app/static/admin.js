@@ -38,18 +38,22 @@
     const s = state.schedule;
     $("vtrack").innerHTML = s.labels.map((label, i) => {
       const cls = i < state.rounds_done ? "done" : i === state.rounds_done ? "current" : "";
-      const dot = i < state.rounds_done ? "✓" : i + 1;
+      const dot = i < state.rounds_done ? "✓" : s.kinds[i] === "prize" ? "★" : i + 1;
       return `<li class="${cls}"><span class="dot">${dot}</span><span class="name">${RD.esc(label)}</span><span class="cnt">→ ${RD.fmt(s.survivors[i])}</span></li>`;
     }).join("");
 
     const left = RD.remaining(state);
     if (state.finished) {
       const w = state.winners.map((x) => `#${x.ticket}${x.holder ? ` · ${RD.esc(x.holder)}` : ""}`).join(", ");
-      $("nextBox").innerHTML = `<div class="k">Draw complete</div><div class="v">🏆 Winner ${w}</div>`;
+      $("nextBox").innerHTML = `<div class="k">Draw complete</div><div class="v">🏆 ${RD.esc(s.completion_label_plural)} ${w}</div>`;
     } else {
       const target = s.survivors[state.rounds_done];
+      const kind = s.kinds[state.rounds_done];
+      const detail = kind === "prize"
+        ? `One ticket will win ${RD.esc(s.prizes[state.rounds_done] || "a gift card")} and leave the grand-prize pool`
+        : `${RD.fmt(left - target)} tickets will be eliminated`;
       $("nextBox").innerHTML = `<div class="k">Up next</div><div class="v">${RD.esc(state.next_label)}</div>` +
-        `<div class="s">${RD.fmt(left)} → ${RD.fmt(target)} · ${RD.fmt(left - target)} tickets will be eliminated</div>`;
+        `<div class="s">${RD.fmt(left)} → ${RD.fmt(target)} · ${detail}</div>`;
     }
     const run = $("runNext");
     run.disabled = state.finished;
@@ -104,11 +108,15 @@
 
   function roundBlock(r, open, undone = false) {
     const rows = r.eliminated.map((t) => `<tr><td class="r" style="width:80px">#${t}</td><td>${RD.esc(state.holders[t] || "—")}</td></tr>`).join("");
+    const result = r.kind === "prize"
+      ? `${RD.esc(r.prize || "Gift card")} winner selected`
+      : `${RD.fmt(r.eliminated_count)} eliminated`;
+    const ticketHeading = r.kind === "prize" ? "Winning ticket" : "Ticket";
     return `<details class="round${undone ? " undone" : ""}"${open ? " open" : ""}>` +
-      `<summary><span><b>${RD.esc(r.label)}</b> <span class="muted">· ${RD.fmt(r.started_with)} → ${RD.fmt(r.survivors)} · ${RD.fmt(r.eliminated_count)} eliminated</span></span>` +
+      `<summary><span><b>${RD.esc(r.label)}</b> <span class="muted">· ${RD.fmt(r.started_with)} → ${RD.fmt(r.survivors)} · ${result}</span></span>` +
       `<span class="muted small">${undone ? "Undone " + RD.fmtTime(r.undone_at) : RD.fmtTime(r.timestamp)}</span></summary>` +
       `<div class="body"><div class="small muted" style="margin-bottom:10px">Ran ${RD.fmtTime(r.timestamp)} · random seed <code>${RD.esc(r.seed)}</code></div>` +
-      `<div class="scroll" style="max-height:300px"><table><tr><th class="r">Ticket</th><th>Holder</th></tr>${rows}</table></div></div></details>`;
+      `<div class="scroll" style="max-height:300px"><table><tr><th class="r">${ticketHeading}</th><th>Holder</th></tr>${rows}</table></div></div></details>`;
   }
 
   function renderLog() {
@@ -140,11 +148,14 @@
     const i = state.rounds_done;
     const left = RD.remaining(state);
     const target = state.schedule.survivors[i];
+    const kind = state.schedule.kinds[i];
     const stage = $("roundStage");
 
     $("roundStageEyebrow").textContent = "Ready to draw";
     $("roundStageTitle").textContent = state.next_label;
-    $("roundStageSummary").textContent = `${RD.fmt(left - target)} tickets will be eliminated, leaving ${RD.fmt(target)}.`;
+    $("roundStageSummary").textContent = kind === "prize"
+      ? `One ticket will win ${state.schedule.prizes[i] || "a gift card"} and leave the grand-prize pool, leaving ${RD.fmt(target)} tickets.`
+      : `${RD.fmt(left - target)} tickets will be eliminated, leaving ${RD.fmt(target)}.`;
     $("roundStageRun").textContent = `Run ${state.next_label}`;
     $("roundStageRun").disabled = false;
     $("roundStageRun").classList.remove("hidden");
@@ -209,8 +220,11 @@
     stageButton.disabled = true;
     stageButton.textContent = "Drawing…";
     mainButton.disabled = true;
-    $("roundStageEyebrow").textContent = "Round in progress";
-    $("roundStageSummary").textContent = "Randomly selecting the eliminated tickets.";
+    const kind = state.schedule.kinds[i];
+    $("roundStageEyebrow").textContent = kind === "prize" ? "Prize draw in progress" : "Round in progress";
+    $("roundStageSummary").textContent = kind === "prize"
+      ? "Randomly selecting the gift-card winner."
+      : "Randomly selecting the eliminated tickets.";
     $("roundStageBoard").classList.add("drawing");
     $("drawAnimation").classList.remove("hidden");
 
@@ -236,17 +250,30 @@
     render();
     renderRoundStage(state, fresh);
     $("roundStageEyebrow").textContent = state.finished ? "Draw complete" : `${round.label} complete`;
-    $("roundStageTitle").textContent = state.finished ? "We have a winner!" : `${RD.fmt(target)} tickets remain`;
-    $("roundStageSummary").textContent = `${RD.fmt(round.eliminated_count)} tickets were eliminated in this round.`;
+    $("roundStageTitle").textContent = state.finished
+      ? `${RD.fmt(target)} ${state.schedule.completion_label_plural} confirmed!`
+      : round.kind === "prize"
+        ? `${round.prize || "Gift card"} winner: #${round.selected_tickets.join(", #")}`
+        : `${RD.fmt(target)} tickets remain`;
+    $("roundStageSummary").textContent = round.kind === "prize"
+      ? "The winning ticket leaves the grand-prize pool."
+      : `${RD.fmt(round.eliminated_count)} tickets were eliminated in this round.`;
     stageButton.classList.add("hidden");
-    RD.toast(state.finished ? "🏆 Draw complete. We have a winner!" : `${round.label} done: ${RD.fmt(target)} tickets left`);
+    RD.toast(state.finished
+      ? `🏆 Draw complete. ${RD.fmt(target)} ${state.schedule.completion_label_plural.toLowerCase()} confirmed!`
+      : round.kind === "prize"
+        ? `🏆 ${round.prize || "Gift card"} winner: #${round.selected_tickets.join(", #")}`
+        : `${round.label} done: ${RD.fmt(target)} tickets left`);
   };
 
   $("undo").onclick = async () => {
     const last = state.rounds[state.rounds.length - 1];
+    const undoResult = last.kind === "prize"
+      ? "The gift-card result will be removed and its ticket will return to the grand-prize pool."
+      : `Its ${RD.fmt(last.eliminated_count)} tickets go back in.`;
     const ok = await RD.confirm({
       title: `Undo ${last.label}?`,
-      body: `Its ${RD.fmt(last.eliminated_count)} tickets go back in. The undone round stays visible in the audit trail.`,
+      body: `${undoResult} The undone stage stays visible in the audit trail.`,
       confirmText: "Undo round", danger: true,
     });
     if (ok) act(() => RD.api("/api/admin/rounds/undo", { method: "POST", body: { expected_rounds_done: state.rounds_done } }), "Round undone");
@@ -580,6 +607,10 @@
   cfg = await RD.api("/api/config");
   RD.applyConfig(cfg);
   $("legend").innerHTML = RD.legendHTML("Search match");
-  $("roundStageLegend").innerHTML = RD.legendHTML();
+  $("roundStageLegend").innerHTML = RD.legendHTML(
+    "",
+    cfg.schedule.kinds.includes("prize"),
+    cfg.schedule.completion_label,
+  );
   load();
 })();
