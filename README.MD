@@ -80,60 +80,58 @@ Sending is always manual: upload the complete spreadsheet, review and Save or
 Merge the allocation, open **Email tickets**, review the recipient list, and
 choose **Send all pending emails**.
 
-Free Render services block outbound ports 25, 465 and 587, so Gmail SMTP cannot
-work from a free Render instance. Production uses Brevo's free transactional
-email API over HTTPS instead. No Microsoft tenant or organization administrator
+Free Render services block outbound ports 25, 465 and 587. This Blueprint uses
+a Starter Render instance so the application can connect directly to Gmail with
+Python's built-in SMTP client. No Microsoft tenant or additional email service
 is required.
 
-### 1. Create the free Brevo sender
+### 1. Create the Gmail app password
 
-1. Create a free account at `brevo.com` (the free plan does not require a credit
-  card).
-2. In **Settings → Senders, Domains & Dedicated IPs → Senders**, add the Gmail
-  address and sender name used for the draw.
-3. Open the verification message Brevo sends to that Gmail inbox and confirm
-  the sender.
-4. In **SMTP & API → API Keys**, generate an API key named `Reverse Draw` and
-  copy it immediately.
-5. Confirm the free account's available email credits cover the pending count
-  shown by the app before starting the batch.
+1. Enable 2-Step Verification on the Gmail sender account.
+2. Open the Google Account **App passwords** page.
+3. Create an app password named `Reverse Draw`.
+4. Copy the generated 16-character password, remove its display spaces, and
+   keep it out of GitHub.
 
 ### 2. Set the Render environment variables
 
 Use these exact names in **Render → reverse-draw → Environment**:
 
 ```dotenv
-EMAIL_PROVIDER=brevo
-BREVO_API_KEY=the-api-key-generated-by-brevo
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USERNAME=your.sender.account@gmail.com
+SMTP_PASSWORD=the-16-character-google-app-password
 EMAIL_SENDER_ADDRESS=your.sender.account@gmail.com
 EMAIL_SENDER_NAME=United Way Reverse Draw
 PUBLIC_APP_URL=https://reverse-draw-xxxx.onrender.com
 ```
 
-- `EMAIL_PROVIDER`: exactly `brevo`.
-- `BREVO_API_KEY`: the Brevo API key; never commit it to GitHub.
-- `EMAIL_SENDER_ADDRESS`: the Gmail address registered and verified in Brevo.
+- `EMAIL_PROVIDER`: exactly `smtp`.
+- `SMTP_HOST`: exactly `smtp.gmail.com`.
+- `SMTP_PORT`: exactly `587`.
+- `SMTP_SECURITY`: exactly `starttls`.
+- `SMTP_USERNAME`: the complete Gmail sender address.
+- `SMTP_PASSWORD`: the Google app password with all spaces removed.
+- `EMAIL_SENDER_ADDRESS`: normally the same value as `SMTP_USERNAME`.
 - `EMAIL_SENDER_NAME`: the changeable display name recipients see, such as
   `United Way Reverse Draw`. It can be changed without changing credentials.
 - `PUBLIC_APP_URL`: the deployed site's full `https://` origin, with no trailing
   slash and no `/admin` path.
 
-Save the Render environment and allow it to redeploy. The admin panel should
-then show **Provider: BREVO** and the verified sender. A definite API rejection
-remains pending for retry. A network timeout is marked **unknown**; check
-Brevo's **Transactional → Logs** before choosing **Mark delivered** or
-**Allow retry** in the batch history.
-
-Gmail SMTP remains supported for local development or a paid host that permits
-SMTP. Set `EMAIL_PROVIDER=smtp`, the Gmail SMTP host/port/security, username,
-Google app password and sender variables from `.env.example` in that environment.
+Confirm the reverse-draw service's instance type is **Starter** or higher, save
+the environment, and redeploy. The admin panel shows only the configured sender
+and the pending personalized messages. If an earlier attempt is still marked
+unknown, check Gmail Sent before choosing **Mark delivered** or **Allow retry**.
 
 Microsoft Graph remains supported for existing deployments by setting
 `EMAIL_PROVIDER=graph` together with `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`,
 `MS_GRAPH_CLIENT_SECRET`, `EMAIL_SENDER_ADDRESS`, and `PUBLIC_APP_URL`.
 
 ### 4. Before the event
-- The free Render plan puts the app to sleep after 15 minutes without visitors, and the next visit waits while it wakes up. For the week of the draw, switch the service to the **Starter** plan in Render, then switch back afterwards.
+- Confirm the web service is using the Starter instance declared in `render.yaml`.
 - Do a practice run: load the holders, run every round, then **Reset** (keep holders ticked).
 - If the admin page ever shows a red "No database is connected" banner, `DATABASE_URL` isn't set, and nothing will survive a restart.
 

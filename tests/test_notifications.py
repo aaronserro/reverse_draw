@@ -8,8 +8,6 @@ import pandas as pd
 from app.draw import ReverseDraw
 from app.db import SQLiteStore
 from app.email_service import (
-    BrevoEmailClient,
-    BrevoEmailConfig,
     SMTPEmailConfig,
     email_config,
     render_ticket_email,
@@ -163,7 +161,7 @@ class EmailTemplateTests(unittest.TestCase):
             "SMTP_PORT": "587",
             "SMTP_SECURITY": "starttls",
             "SMTP_USERNAME": "draw.sender@gmail.com",
-            "SMTP_PASSWORD": "example-app-password",
+            "SMTP_PASSWORD": "abcd efgh ijkl mnop",
             "EMAIL_SENDER_NAME": "Fundraiser Draw",
             "EMAIL_SENDER_ADDRESS": "",
             "PUBLIC_APP_URL": "https://draw.example.com",
@@ -174,50 +172,7 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertTrue(settings.configured)
         self.assertEqual(settings.sender, "draw.sender@gmail.com")
         self.assertEqual(settings.sender_name, "Fundraiser Draw")
-
-    def test_brevo_configuration_uses_https_provider(self):
-        values = {
-            "EMAIL_PROVIDER": "brevo",
-            "BREVO_API_KEY": "test-api-key",
-            "EMAIL_SENDER_ADDRESS": "draw.sender@gmail.com",
-            "EMAIL_SENDER_NAME": "Fundraiser Draw",
-            "PUBLIC_APP_URL": "https://draw.example.com",
-        }
-        with patch.dict(os.environ, values, clear=False):
-            settings = email_config()
-        self.assertIsInstance(settings, BrevoEmailConfig)
-        self.assertTrue(settings.configured)
-        self.assertEqual(settings.provider, "brevo")
-
-    def test_brevo_client_records_provider_message_id(self):
-        class FakeResponse:
-            status = 201
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def read(self):
-                return b'{"messageId":"brevo-message-123"}'
-
-        settings = BrevoEmailConfig(
-            api_key="test-api-key",
-            sender="draw.sender@gmail.com",
-            sender_name="Fundraiser Draw",
-            app_url="https://draw.example.com",
-        )
-        with patch("urllib.request.urlopen", return_value=FakeResponse()):
-            result = BrevoEmailClient(settings).send_ticket_email(
-                recipient="buyer@example.com",
-                name="Buyer",
-                new_tickets=[1],
-                all_tickets=[1],
-            )
-        self.assertEqual(result["status_code"], 201)
-        self.assertEqual(result["request_id"], "brevo-message-123")
-
+        self.assertEqual(settings.password, "abcdefghijklmnop")
 
 class BatchProcessingTests(unittest.TestCase):
     def test_successful_graph_response_is_persisted(self):

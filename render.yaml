@@ -2,7 +2,7 @@ services:
   - type: web
     name: reverse-draw
     runtime: python
-    plan: free            # switch to "starter" for the live event so it never sleeps
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
     healthCheckPath: /healthz
@@ -17,8 +17,16 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: EMAIL_PROVIDER
-        value: brevo
-      - key: BREVO_API_KEY
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURITY
+        value: starttls
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
         sync: false
       - key: EMAIL_SENDER_ADDRESS
         sync: false

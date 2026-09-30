@@ -39,99 +39,6 @@ class EmailClient(Protocol):
 
 
 @dataclass(frozen=True)
-class BrevoEmailConfig:
-    api_key: str
-    sender: str
-    sender_name: str
-    app_url: str
-    provider: str = "brevo"
-
-    @classmethod
-    def from_env(cls) -> BrevoEmailConfig:
-        return cls(
-            api_key=os.getenv("BREVO_API_KEY", "").strip(),
-            sender=os.getenv("EMAIL_SENDER_ADDRESS", "").strip(),
-            sender_name=(
-                os.getenv("EMAIL_SENDER_NAME", "").strip() or config.ORG_NAME
-            ),
-            app_url=os.getenv("PUBLIC_APP_URL", "").strip().rstrip("/"),
-        )
-
-    @property
-    def configured(self) -> bool:
-        return not self.missing
-
-    @property
-    def missing(self) -> list[str]:
-        values = {
-            "BREVO_API_KEY": self.api_key,
-            "EMAIL_SENDER_ADDRESS": self.sender,
-            "PUBLIC_APP_URL": self.app_url,
-        }
-        return [name for name, value in values.items() if not value]
-
-
-class BrevoEmailClient:
-    def __init__(self, settings: BrevoEmailConfig) -> None:
-        self.settings = settings
-
-    def send_ticket_email(
-        self,
-        *,
-        recipient: str,
-        name: str,
-        new_tickets: list[int],
-        all_tickets: list[int],
-    ) -> dict:
-        if not self.settings.configured:
-            raise EmailSendError("Brevo email is not configured.")
-        subject, html_body, _ = render_ticket_email(
-            name=name,
-            new_tickets=new_tickets,
-            all_tickets=all_tickets,
-            app_url=self.settings.app_url,
-        )
-        payload = {
-            "sender": {
-                "email": self.settings.sender,
-                "name": self.settings.sender_name,
-            },
-            "to": [{"email": recipient, "name": name}],
-            "subject": subject,
-            "htmlContent": html_body,
-            "tags": ["reverse-draw-tickets"],
-        }
-        request = urllib.request.Request(
-            "https://api.brevo.com/v3/smtp/email",
-            data=json.dumps(payload).encode(),
-            headers={
-                "accept": "application/json",
-                "api-key": self.settings.api_key,
-                "content-type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read() or b"{}")
-                return {
-                    "status_code": response.status,
-                    "request_id": str(result.get("messageId", "")),
-                }
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")[:500]
-            raise EmailSendError(
-                f"The email provider rejected the message "
-                f"({error.code}): {detail}"
-            ) from error
-        except (urllib.error.URLError, TimeoutError) as error:
-            raise EmailSendError(
-                f"The email provider response was uncertain: {error}",
-                outcome_unknown=True,
-            ) from error
-
-
-@dataclass(frozen=True)
 class SMTPEmailConfig:
     host: str
     port: int
@@ -155,7 +62,7 @@ class SMTPEmailConfig:
             host=os.getenv("SMTP_HOST", "smtp.gmail.com").strip(),
             port=port,
             username=username,
-            password=os.getenv("SMTP_PASSWORD", "").strip(),
+            password="".join(os.getenv("SMTP_PASSWORD", "").split()),
             security=os.getenv("SMTP_SECURITY", "starttls").strip().lower(),
             sender=(os.getenv("EMAIL_SENDER_ADDRESS", "").strip() or username),
             sender_name=(
@@ -411,25 +318,19 @@ class GraphEmailClient:
             ) from error
 
 
-def email_config() -> BrevoEmailConfig | SMTPEmailConfig | GraphEmailConfig:
-    """Load the explicitly selected provider, defaulting to Brevo on Render."""
+def email_config() -> SMTPEmailConfig | GraphEmailConfig:
+    """Load the selected provider, defaulting to SMTP."""
     selected = os.getenv("EMAIL_PROVIDER", "").strip().lower()
-    if not selected:
-        selected = "brevo" if os.getenv("RENDER") else "smtp"
     if selected == "graph":
         return GraphEmailConfig.from_env()
-    if selected == "brevo":
-        return BrevoEmailConfig.from_env()
     return SMTPEmailConfig.from_env()
 
 
 def build_email_client(
-    settings: BrevoEmailConfig | SMTPEmailConfig | GraphEmailConfig,
+    settings: SMTPEmailConfig | GraphEmailConfig,
 ) -> EmailClient:
     if isinstance(settings, GraphEmailConfig):
         return GraphEmailClient(settings)
-    if isinstance(settings, BrevoEmailConfig):
-        return BrevoEmailClient(settings)
     return SMTPEmailClient(settings)
 
 
