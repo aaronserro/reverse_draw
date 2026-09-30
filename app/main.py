@@ -993,6 +993,16 @@ def _process_notification_batch(batch_id: str, recipients: list[dict]) -> None:
     """Deliver one claimed batch and durably record every result."""
     client = build_email_client(email_config())
     for recipient in recipients:
+        current = next(
+            (
+                item
+                for item in load().notification_batches
+                if item.get("id") == batch_id
+            ),
+            None,
+        )
+        if current is None or current.get("status") != "sending":
+            return
         job_status = "sent"
         sent_at = ""
         error_message = ""
@@ -1077,6 +1087,30 @@ def send_all_notifications(background_tasks: BackgroundTasks):
         _process_notification_batch, batch_id, preview["recipients"]
     )
     return {"batch": batch, "preview": _notification_preview(load())}
+
+
+@app.post("/api/admin/notifications/cancel", dependencies=admin)
+def cancel_notification_batch():
+    with Mutation() as draw:
+        batch = next(
+            (
+                item
+                for item in reversed(draw.notification_batches)
+                if _batch_is_active(item)
+            ),
+            None,
+        )
+        if batch is None:
+            raise HTTPException(status_code=409, detail="No email batch is sending.")
+        for job in batch.get("jobs", []):
+            if job.get("status") == "pending":
+                job.update(
+                    status="failed",
+                    error="Canceled by the administrator before this message sent.",
+                )
+        batch["status"] = "attention"
+        batch["completed_at"] = now_iso()
+        return _notification_preview(draw)
 
 
 class ResolveUnknownIn(BaseModel):

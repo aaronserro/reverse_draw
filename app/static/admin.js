@@ -350,6 +350,7 @@
   function renderNotifications(preview) {
     notificationPreview = preview;
     $("sendAllEmails").disabled = !preview.ready;
+    $("cancelEmails").classList.toggle("hidden", !preview.sending);
     const statusClass = preview.ready ? "ok" : preview.blocked.length ? "err" : "warn";
     $("emailStatus").innerHTML =
       `<div class="banner ${statusClass} email-status"><div><b>${RD.fmt(preview.pending_people)} pending recipient(s) · ` +
@@ -443,6 +444,19 @@
   $("mergeHolders").onclick = () => saveHolders("merge");
 
   $("refreshEmails").onclick = loadNotifications;
+  $("cancelEmails").onclick = async () => {
+    const ok = await RD.confirm({
+      title: "Cancel the sending batch?",
+      body: "Messages already accepted by the provider remain sent. Messages not started will return to the pending list.",
+      confirmText: "Cancel batch",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      renderNotifications(await RD.api("/api/admin/notifications/cancel", { method: "POST" }));
+      RD.toast("Email batch canceled.");
+    } catch (e) { RD.toast(e.message, true); }
+  };
   $("sendAllEmails").onclick = async () => {
     if (!notificationPreview?.ready) return;
     const ok = await RD.confirm({
