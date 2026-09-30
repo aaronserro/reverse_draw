@@ -268,27 +268,22 @@
     label.firstChild.textContent = "Loading…";
     picker.disabled = true;
     try {
-      const extension = f.name.split(".").pop().toLowerCase();
-      if (extension === "csv") {
-        $("holdersCsv").value = (await f.text()).replace(/^﻿/, "");
-      } else {
-        const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(f.name)}`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/octet-stream" },
-          body: f,
-        });
-        const result = await response.json().catch(() => null);
-        if (!response.ok) {
-          const error = new Error((result && result.detail) || `Upload failed (${response.status})`);
-          error.status = response.status;
-          throw error;
-        }
-        $("holdersCsv").value = result.csv;
-        if (!result.imported) throw new Error("No valid ticket holders were found in the first worksheet.");
+      const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(f.name)}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: f,
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        const error = new Error((result && result.detail) || `Upload failed (${response.status})`);
+        error.status = response.status;
+        throw error;
       }
+      $("holdersCsv").value = result.csv;
+      if (!result.imported) throw new Error("No valid ticket holders were found in the uploaded data.");
       csvDirty = true;
-      RD.toast(`Loaded ${f.name}. Review it, then Save or Merge.`);
+      RD.toast(`Loaded ${result.imported} ticket holder(s) from ${f.name}. Review, then Save or Merge.`);
     } catch (e) {
       if (e.status === 401) show("login");
       else RD.toast(e.message, true);

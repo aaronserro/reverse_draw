@@ -11,7 +11,6 @@ Admin:   GET /admin        control page (password login)
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import hmac
 import io
@@ -22,10 +21,10 @@ import re
 import secrets
 import threading
 import time
-from itertools import chain
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -435,89 +434,152 @@ def put_holders(body: HoldersIn):
         return out
 
 
-def _excel_rows(data: bytes, suffix: str):
-    """Yield values from the first worksheet in an Excel workbook."""
-    if suffix in {".xlsx", ".xlsm"}:
-        from openpyxl import load_workbook
-
-        workbook = load_workbook(
-            io.BytesIO(data), read_only=True, data_only=True
-        )
-        try:
-            sheet = workbook.active
-            yield from sheet.iter_rows(values_only=True)
-        finally:
-            workbook.close()
-        return
-
-    if suffix == ".xls":
-        import xlrd
-
-        workbook = xlrd.open_workbook(file_contents=data, on_demand=True)
-        sheet = workbook.sheet_by_index(0)
-        for row_number in range(sheet.nrows):
-            yield sheet.row_values(row_number)
-        return
-
-    raise DrawError(
-        "Choose a CSV or Excel file (.csv, .xlsx, .xlsm, or .xls)."
-    )
-
-
-def _excel_holders_csv(data: bytes, filename: str) -> str:
-    """Convert the first worksheet's ticket/name columns to normalized CSV."""
+def _read_upload_dataframe(data: bytes, filename: str) -> pd.DataFrame:
+    """Read CSV or Excel upload bytes into a pandas DataFrame."""
     suffix = Path(filename).suffix.lower()
-    rows = iter(_excel_rows(data, suffix))
-    first = next(
-        (
-            row
-            for row in rows
-            if any(value not in (None, "") for value in row)
-        ),
-        None,
-    )
-    if first is None:
-        raise DrawError("The selected workbook is empty.")
+    source = io.BytesIO(data)
+    if suffix == ".csv":
+        frame = pd.read_csv(source, dtype=object)
+    elif suffix in {".xlsx", ".xlsm", ".xls"}:
+        workbook = pd.ExcelFile(source)
+        frame = pd.DataFrame()
+        for sheet_name in workbook.sheet_names:
+            candidate = workbook.parse(sheet_name=sheet_name, dtype=object)
+            if not candidate.dropna(how="all").empty:
+                frame = candidate
+                break
+    else:
+        raise DrawError(
+            "Choose a CSV or Excel file (.csv, .xlsx, .xlsm, or .xls)."
+        )
 
-    headers = [
-        str(value or "").strip().lower().replace("_", " ")
-        for value in first
-    ]
-    ticket_names = {
+    frame = frame.dropna(how="all").reset_index(drop=True)
+    if frame.empty:
+        raise DrawError("The selected file has no data rows.")
+    if len(frame) > 200_000:
+        raise DrawError("The file has too many rows (maximum 200,000).")
+    return frame
+
+
+def _column_key(value: object) -> str:
+    """Normalize verbose form-export headers for matching."""
+    return re.sub(r"\s+", " ", str(value).replace("\xa0", " ")).strip().lower()
+
+
+def _assignment_dataframe(frame: pd.DataFrame) -> pd.DataFrame | None:
+    """Normalize conventional ticket/name columns when they exist."""
+    keyed = {_column_key(column): column for column in frame.columns}
+    ticket_aliases = (
         "ticket",
         "ticket #",
         "ticket no",
         "ticket number",
         "number",
-    }
-    holder_names = {"name", "holder", "ticket holder", "owner"}
-    ticket_index = next(
-        (i for i, value in enumerate(headers) if value in ticket_names), None
     )
-    holder_index = next(
-        (i for i, value in enumerate(headers) if value in holder_names), None
+    holder_aliases = ("name", "holder", "ticket holder", "owner")
+    ticket_column = next(
+        (keyed[name] for name in ticket_aliases if name in keyed), None
+    )
+    holder_column = next(
+        (keyed[name] for name in holder_aliases if name in keyed), None
+    )
+    if ticket_column is None or holder_column is None:
+        return None
+
+    return pd.DataFrame(
+        {"ticket": frame[ticket_column], "name": frame[holder_column]}
     )
 
-    if ticket_index is None or holder_index is None:
-        ticket_index, holder_index = 0, 1
-        rows = chain([first], rows)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["ticket", "name"])
-    highest_index = max(ticket_index, holder_index)
-    for row_number, row in enumerate(rows, start=1):
-        if row_number > 200_000:
-            raise DrawError(
-                "The workbook has too many rows (maximum 200,000)."
-            )
-        if len(row) <= highest_index:
-            continue
-        ticket = row[ticket_index]
-        if isinstance(ticket, float) and ticket.is_integer():
-            ticket = int(ticket)
-        writer.writerow([ticket, row[holder_index]])
-    return output.getvalue()
+def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
+    """Expand the supplied Microsoft Forms order export into ticket holders."""
+    columns = [(_column_key(column), column) for column in frame.columns]
+    name_column = next(
+        (column for key, column in columns if key == "full name"), None
+    )
+    quantity_column = next(
+        (
+            column
+            for key, column in columns
+            if key.startswith("how many united way reverse draw")
+        ),
+        None,
+    )
+    preference_columns = [
+        column
+        for key, column in columns
+        if "choice ticket number" in key
+    ]
+    if name_column is None or quantity_column is None:
+        raise DrawError(
+            "No ticket/name columns or Reverse Draw order columns were found."
+        )
+
+    orders = frame[[name_column, quantity_column, *preference_columns]].copy()
+    orders["name"] = orders[name_column].fillna("").astype(str).str.strip()
+    orders["quantity"] = pd.to_numeric(
+        orders[quantity_column].astype(str).str.extract(r"(\d+)")[0],
+        errors="coerce",
+    ).fillna(0).astype(int)
+    orders = orders[(orders["name"] != "") & (orders["quantity"] > 0)]
+    requested = int(orders["quantity"].sum())
+    if requested > total:
+        raise DrawError(
+            f"The file requests {requested:,} tickets, but the draw has only "
+            f"{total:,}."
+        )
+
+    assignments: dict[int, str] = {}
+    order_tickets: dict[object, list[int]] = {}
+
+    # Ticket choices are alternatives. Reserve at most one valid preference
+    # per order, in upload order, before filling the remaining ticket numbers.
+    for index, order in orders.iterrows():
+        allocated: list[int] = []
+        for column in preference_columns:
+            match = re.search(r"\d+", str(order[column]))
+            preferred = int(match.group()) if match else 0
+            if 1 <= preferred <= total and preferred not in assignments:
+                assignments[preferred] = order["name"]
+                allocated.append(preferred)
+                break
+        order_tickets[index] = allocated
+
+    available = (
+        ticket
+        for ticket in range(1, total + 1)
+        if ticket not in assignments
+    )
+    for index, order in orders.iterrows():
+        allocated = order_tickets[index]
+        for _ in range(int(order["quantity"]) - len(allocated)):
+            ticket = next(available)
+            assignments[ticket] = order["name"]
+            allocated.append(ticket)
+
+    return pd.DataFrame(
+        sorted(assignments.items()), columns=["ticket", "name"]
+    )
+
+
+def _uploaded_holders_dataframe(
+    data: bytes, filename: str, total: int
+) -> pd.DataFrame:
+    """Return a validated ticket/name DataFrame for any supported upload."""
+    source = _read_upload_dataframe(data, filename)
+    holders = _assignment_dataframe(source)
+    if holders is None:
+        holders = _order_dataframe(source, total)
+
+    holders["ticket"] = pd.to_numeric(holders["ticket"], errors="coerce")
+    holders["name"] = holders["name"].fillna("").astype(str).str.strip()
+    holders = holders.dropna(subset=["ticket"])
+    holders = holders[holders["ticket"].mod(1).eq(0)]
+    holders["ticket"] = holders["ticket"].astype(int)
+    holders = holders[
+        holders["ticket"].between(1, total) & holders["name"].ne("")
+    ]
+    return holders.drop_duplicates("ticket", keep="last").sort_values("ticket")
 
 
 @app.post("/api/admin/holders/file", dependencies=admin)
@@ -541,14 +603,12 @@ async def preview_holder_file(request: Request, filename: str):
         bad_request(DrawError("The selected file is empty."))
 
     try:
-        converted = _excel_holders_csv(data, filename)
         draw = load()
-        mapping = draw.parse_owner_csv(converted)
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["ticket", "name"])
-        writer.writerows(sorted(mapping.items()))
-        return {"csv": output.getvalue(), "imported": len(mapping)}
+        holders = _uploaded_holders_dataframe(data, filename, draw.total)
+        return {
+            "csv": holders.to_csv(index=False),
+            "imported": len(holders),
+        }
     except (DrawError, ValueError, KeyError, OSError) as error:
         bad_request(DrawError(f"Could not read {filename}: {error}"))
     except Exception:

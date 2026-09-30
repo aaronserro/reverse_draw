@@ -118,7 +118,7 @@
           </div>
 
           <div data-pane="holders">
-            <p class="hint">Enter one ticket per line or load a CSV/Excel file. Excel files use the first sheet and should have <code>ticket</code> and <code>name</code> columns.</p>
+            <p class="hint">Load a CSV/Excel file or enter <code>ticket,name</code> rows. Order-form exports are converted to ticket holders automatically using purchaser name, quantity, and preferred ticket columns.</p>
             <textarea class="input" id="holdersCsv" spellcheck="false" placeholder="ticket,name&#10;1,Jane Doe&#10;2,Bob Smith"></textarea>
             <div class="field-row" style="margin-top:10px; justify-content:space-between">
               <label class="btn file-btn">📄 Load CSV or Excel…<input type="file" id="csvFile" accept=".csv,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
