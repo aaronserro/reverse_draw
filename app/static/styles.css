@@ -476,6 +476,9 @@ dialog.round-stage::backdrop { background: var(--bg); }
 .email-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
 .email-head h2 { margin-bottom: 4px; }
 .email-status { margin: 0 0 14px; }
+.test-email-box { margin: 14px 0 20px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.test-email-box > .field-row { margin-top: 10px; }
+.test-email-box .input { flex: 1 1 190px; }
 .banner.ok { border-color: #a8d4b2; background: #edf8ef; color: #245d32; }
 .ticket-list.new { color: var(--brand-hi); font-weight: 700; }
 tr.blocked td { background: #fff4f2; color: #7c2924; }

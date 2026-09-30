@@ -1089,6 +1089,40 @@ def send_all_notifications(background_tasks: BackgroundTasks):
     return {"batch": batch, "preview": _notification_preview(load())}
 
 
+class TestEmailIn(BaseModel):
+    email: str
+    name: str = "Test Recipient"
+
+
+@app.post("/api/admin/notifications/test", dependencies=admin)
+def send_test_notification(body: TestEmailIn):
+    recipient = _email_key(body.email)
+    if not EMAIL_PATTERN.fullmatch(recipient):
+        raise HTTPException(status_code=400, detail="Enter a valid test email.")
+    name = re.sub(r"\s+", " ", body.name).strip()[:120] or "Test Recipient"
+    settings = email_config()
+    if not settings.configured:
+        raise HTTPException(
+            status_code=409,
+            detail="Email delivery is not configured. Contact the site owner.",
+        )
+    try:
+        response = build_email_client(settings).send_ticket_email(
+            recipient=recipient,
+            name=name,
+            new_tickets=[101, 202],
+            all_tickets=[101, 202, 303],
+            test_mode=True,
+        )
+    except EmailSendError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+    return {
+        "sent": True,
+        "recipient": recipient,
+        "provider_request_id": response.get("request_id", ""),
+    }
+
+
 @app.post("/api/admin/notifications/cancel", dependencies=admin)
 def cancel_notification_batch():
     with Mutation() as draw:

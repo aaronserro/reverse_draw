@@ -444,6 +444,24 @@
   $("mergeHolders").onclick = () => saveHolders("merge");
 
   $("refreshEmails").onclick = loadNotifications;
+  $("sendTestEmail").onclick = async () => {
+    const email = $("testEmailAddress").value.trim();
+    if (!email) { RD.toast("Enter a test recipient email.", true); return; }
+    const button = $("sendTestEmail");
+    button.disabled = true;
+    button.textContent = "Sending…";
+    try {
+      const result = await RD.api("/api/admin/notifications/test", {
+        method: "POST",
+        body: { email, name: $("testEmailName").value },
+      });
+      RD.toast(`Test email accepted for ${result.recipient}.`);
+    } catch (e) { RD.toast(e.message, true); }
+    finally {
+      button.disabled = false;
+      button.textContent = "Send test";
+    }
+  };
   $("cancelEmails").onclick = async () => {
     const ok = await RD.confirm({
       title: "Cancel the sending batch?",
