@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f5f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Reverse Draw">
   <title>Reverse Draw</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/app-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
@@ -22,7 +29,8 @@
       </div>
       <div class="nav-right">
         <span class="muted small">Access code required</span>
-        <a class="btn ghost sm" href="/admin">Admin sign in</a>
+        <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
+        <a class="btn ghost sm" href="/admin">Admin</a>
       </div>
     </div>
   </header>
@@ -78,7 +86,8 @@
         <span class="nav-sep"></span>
         <span class="live"><i></i>Live</span>
         <span class="muted small" id="updated"></span>
-        <a class="btn ghost sm" href="/admin">Admin sign in</a>
+        <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
+        <a class="btn ghost sm" href="/admin">Admin</a>
         <button class="btn ghost sm" id="leave" title="Sign out on this device">Sign out</button>
       </div>
     </div>
@@ -142,6 +151,7 @@
 </div>
 
 <script src="/static/common.js"></script>
+<script src="/static/pwa.js"></script>
 <script src="/static/public.js"></script>
 </body>
 </html>

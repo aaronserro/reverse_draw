@@ -1,0 +1,42 @@
+{
+  "id": "/",
+  "name": "Reverse Draw",
+  "short_name": "Draw",
+  "description": "Follow the live Reverse Draw and check your ticket status.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#f6f5f1",
+  "theme_color": "#17324d",
+  "orientation": "any",
+  "categories": ["entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/static/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Public board",
+      "short_name": "Board",
+      "url": "/",
+      "icons": [{ "src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Admin controls",
+      "short_name": "Admin",
+      "url": "/admin",
+      "icons": [{ "src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

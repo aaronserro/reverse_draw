@@ -11,8 +11,10 @@ Admin:   GET /admin        control page (password login)
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -20,6 +22,7 @@ import re
 import secrets
 import threading
 import time
+from itertools import chain
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -296,6 +299,24 @@ def admin_page():
     return FileResponse(STATIC / "admin.html", headers=NO_CACHE)
 
 
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def web_manifest():
+    return FileResponse(
+        STATIC / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers=NO_CACHE,
+    )
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():
+    return FileResponse(
+        STATIC / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+    )
+
+
 @app.get("/healthz", include_in_schema=False)
 def healthz():
     return {"ok": True}
@@ -412,6 +433,132 @@ def put_holders(body: HoldersIn):
         out = admin_payload(d)
         out["imported"] = len(mapping)
         return out
+
+
+def _excel_rows(data: bytes, suffix: str):
+    """Yield values from the first worksheet in an Excel workbook."""
+    if suffix in {".xlsx", ".xlsm"}:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(
+            io.BytesIO(data), read_only=True, data_only=True
+        )
+        try:
+            sheet = workbook.active
+            yield from sheet.iter_rows(values_only=True)
+        finally:
+            workbook.close()
+        return
+
+    if suffix == ".xls":
+        import xlrd
+
+        workbook = xlrd.open_workbook(file_contents=data, on_demand=True)
+        sheet = workbook.sheet_by_index(0)
+        for row_number in range(sheet.nrows):
+            yield sheet.row_values(row_number)
+        return
+
+    raise DrawError(
+        "Choose a CSV or Excel file (.csv, .xlsx, .xlsm, or .xls)."
+    )
+
+
+def _excel_holders_csv(data: bytes, filename: str) -> str:
+    """Convert the first worksheet's ticket/name columns to normalized CSV."""
+    suffix = Path(filename).suffix.lower()
+    rows = iter(_excel_rows(data, suffix))
+    first = next(
+        (
+            row
+            for row in rows
+            if any(value not in (None, "") for value in row)
+        ),
+        None,
+    )
+    if first is None:
+        raise DrawError("The selected workbook is empty.")
+
+    headers = [
+        str(value or "").strip().lower().replace("_", " ")
+        for value in first
+    ]
+    ticket_names = {
+        "ticket",
+        "ticket #",
+        "ticket no",
+        "ticket number",
+        "number",
+    }
+    holder_names = {"name", "holder", "ticket holder", "owner"}
+    ticket_index = next(
+        (i for i, value in enumerate(headers) if value in ticket_names), None
+    )
+    holder_index = next(
+        (i for i, value in enumerate(headers) if value in holder_names), None
+    )
+
+    if ticket_index is None or holder_index is None:
+        ticket_index, holder_index = 0, 1
+        rows = chain([first], rows)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ticket", "name"])
+    highest_index = max(ticket_index, holder_index)
+    for row_number, row in enumerate(rows, start=1):
+        if row_number > 200_000:
+            raise DrawError(
+                "The workbook has too many rows (maximum 200,000)."
+            )
+        if len(row) <= highest_index:
+            continue
+        ticket = row[ticket_index]
+        if isinstance(ticket, float) and ticket.is_integer():
+            ticket = int(ticket)
+        writer.writerow([ticket, row[holder_index]])
+    return output.getvalue()
+
+
+@app.post("/api/admin/holders/file", dependencies=admin)
+async def preview_holder_file(request: Request, filename: str):
+    content_length = request.headers.get("content-length")
+    too_large = (
+        content_length
+        and content_length.isdigit()
+        and int(content_length) > 10 * 1024 * 1024
+    )
+    if too_large:
+        raise HTTPException(
+            status_code=413, detail="Files must be 10 MB or smaller."
+        )
+    data = await request.body()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=413, detail="Files must be 10 MB or smaller."
+        )
+    if not data:
+        bad_request(DrawError("The selected file is empty."))
+
+    try:
+        converted = _excel_holders_csv(data, filename)
+        draw = load()
+        mapping = draw.parse_owner_csv(converted)
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ticket", "name"])
+        writer.writerows(sorted(mapping.items()))
+        return {"csv": output.getvalue(), "imported": len(mapping)}
+    except (DrawError, ValueError, KeyError, OSError) as error:
+        bad_request(DrawError(f"Could not read {filename}: {error}"))
+    except Exception:
+        log.exception("Failed to parse holder workbook %s", filename)
+        bad_request(
+            DrawError(
+                f"Could not read {filename}. Make sure it is a valid, "
+                "unprotected Excel file."
+            )
+        )
 
 
 class BlockIn(BaseModel):

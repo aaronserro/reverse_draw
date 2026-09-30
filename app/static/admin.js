@@ -262,10 +262,41 @@
   $("csvFile").addEventListener("change", async (ev) => {
     const f = ev.target.files[0];
     if (!f) return;
-    $("holdersCsv").value = (await f.text()).replace(/^﻿/, "");
-    csvDirty = true;
-    ev.target.value = "";
-    RD.toast(`Loaded ${f.name}. Review it, then Save or Merge.`);
+    const picker = ev.target;
+    const label = picker.closest("label");
+    const originalLabel = label.firstChild.textContent;
+    label.firstChild.textContent = "Loading…";
+    picker.disabled = true;
+    try {
+      const extension = f.name.split(".").pop().toLowerCase();
+      if (extension === "csv") {
+        $("holdersCsv").value = (await f.text()).replace(/^﻿/, "");
+      } else {
+        const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(f.name)}`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: f,
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok) {
+          const error = new Error((result && result.detail) || `Upload failed (${response.status})`);
+          error.status = response.status;
+          throw error;
+        }
+        $("holdersCsv").value = result.csv;
+        if (!result.imported) throw new Error("No valid ticket holders were found in the first worksheet.");
+      }
+      csvDirty = true;
+      RD.toast(`Loaded ${f.name}. Review it, then Save or Merge.`);
+    } catch (e) {
+      if (e.status === 401) show("login");
+      else RD.toast(e.message, true);
+    } finally {
+      label.firstChild.textContent = originalLabel;
+      picker.disabled = false;
+      picker.value = "";
+    }
   });
 
   async function saveHolders(mode) {

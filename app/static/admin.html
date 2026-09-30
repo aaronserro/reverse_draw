@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
   <meta name="theme-color" content="#f6f5f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Draw Admin">
   <title>Reverse Draw Admin</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/app-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
@@ -23,7 +30,7 @@
       <input class="input lg" type="password" id="password" placeholder="Admin password" autocomplete="current-password" required>
       <button class="btn primary lg block" type="submit" style="margin-top:12px">Sign in</button>
     </form>
-    <div class="gate-foot"><a href="/">Go to the public board</a></div>
+    <div class="gate-foot"><a href="/">Go to the public board</a> <span aria-hidden="true">·</span> <button class="link-button hidden" type="button" data-install-app>Install app</button></div>
   </div>
 </div>
 
@@ -37,7 +44,8 @@
           <div class="brand-sub" id="storageInfo"></div></div>
       </div>
       <div class="nav-right">
-        <a class="btn sm" href="/" target="_blank" rel="noopener">Public page ↗</a>
+        <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
+        <a class="btn sm" href="/" target="_blank" rel="noopener">Public ↗</a>
         <button class="btn ghost sm" id="logout">Sign out</button>
       </div>
     </div>
@@ -110,10 +118,10 @@
           </div>
 
           <div data-pane="holders">
-            <p class="hint">One line per ticket as <code>ticket,name</code>. A header row is fine. Tickets that aren't listed stay unassigned.</p>
+            <p class="hint">Enter one ticket per line or load a CSV/Excel file. Excel files use the first sheet and should have <code>ticket</code> and <code>name</code> columns.</p>
             <textarea class="input" id="holdersCsv" spellcheck="false" placeholder="ticket,name&#10;1,Jane Doe&#10;2,Bob Smith"></textarea>
             <div class="field-row" style="margin-top:10px; justify-content:space-between">
-              <label class="btn file-btn">📄 Load CSV file…<input type="file" id="csvFile" accept=".csv,text/csv,text/plain"></label>
+              <label class="btn file-btn">📄 Load CSV or Excel…<input type="file" id="csvFile" accept=".csv,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
               <div class="field-row">
                 <button class="btn" id="mergeHolders" title="Add or overwrite the listed tickets and keep everyone else">Merge</button>
                 <button class="btn primary" id="saveHolders" title="Replace all holders with exactly this list">Save (replace all)</button>
@@ -173,6 +181,7 @@
 </dialog>
 
 <script src="/static/common.js"></script>
+<script src="/static/pwa.js"></script>
 <script src="/static/admin.js"></script>
 </body>
 </html>
