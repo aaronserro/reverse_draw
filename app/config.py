@@ -20,7 +20,7 @@ TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
 
 # Tickets still in after each round. Must be strictly decreasing.
 # The last number is how many winners there are (usually 1).
-ROUND_SURVIVORS = [500, 199, 199, 89]
+ROUND_SURVIVORS = [500, 301, 102, 89, 3]
 
 # One label per round (same length as ROUND_SURVIVORS).
 ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Round 4", "Grand Prize"]

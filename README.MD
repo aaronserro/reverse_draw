@@ -67,7 +67,7 @@ git push -u origin main
 
 After that, every push to `main` redeploys the site.
 
-## Ticket emails on free Render
+## Ticket emails on paid Render
 
 The **Email tickets** admin tab reviews everyone with new ticket allocations and
 sends one private, personalized message per recipient. A successful
@@ -125,6 +125,27 @@ Confirm the reverse-draw service's instance type is **Starter** or higher, save
 the environment, and redeploy. The admin panel shows only the configured sender
 and the pending personalized messages. If an earlier attempt is still marked
 unknown, check Gmail Sent before choosing **Mark delivered** or **Allow retry**.
+
+### Corporate junk-filter checklist
+
+No application can force a receiving mail system to use the inbox. For the best
+delivery results:
+
+- `EMAIL_SENDER_ADDRESS` and `SMTP_USERNAME` should be exactly the same Gmail
+  address unless the From address is a verified Gmail alias.
+- Use an established sender account with a recognizable display name. Avoid
+  sending the entire list repeatedly during testing.
+- Ask test recipients to choose **Not junk** and add the sender to their
+  contacts or safe-senders list.
+- If the whole organization quarantines the messages, ask its mail administrator
+  to allow the exact sender address. That policy cannot be bypassed in code.
+- For the strongest long-term authentication and brand alignment, send from a
+  Google Workspace mailbox on an organization-owned domain with SPF, DKIM, and
+  DMARC configured for that domain.
+
+The message contains plain-text and HTML versions, has no tracking pixels, and
+adds standard Date, Message-ID, and Reply-To headers. Gmail supplies the actual
+SPF/DKIM authentication when it accepts the message.
 
 Microsoft Graph remains supported for existing deployments by setting
 `EMAIL_PROVIDER=graph` together with `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`,

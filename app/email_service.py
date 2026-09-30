@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from email.message import EmailMessage
-from email.utils import formataddr
+from email.utils import formataddr, formatdate, make_msgid
 from typing import Protocol
 
 from . import config
@@ -117,6 +117,10 @@ class SMTPEmailClient:
             (self.settings.sender_name, self.settings.sender)
         )
         message["To"] = formataddr((name, recipient))
+        message["Reply-To"] = self.settings.sender
+        message["Date"] = formatdate(localtime=False)
+        sender_domain = self.settings.sender.rpartition("@")[2]
+        message["Message-ID"] = make_msgid(domain=sender_domain or None)
         message.set_content(text_body)
         message.add_alternative(html_body, subtype="html")
 
@@ -342,28 +346,98 @@ def render_ticket_email(
     safe_prize = html.escape(config.PRIZE_TEXT)
     safe_url = html.escape(app_url, quote=True)
     new_chips = "".join(
-        f'<span style="display:inline-block;margin:4px;padding:10px 14px;'
-        f'border-radius:9px;background:#e7f2ea;color:#1f6b33;font-weight:700">'
-        f"#{ticket}</span>"
+        f'<span class="ticket-chip" style="display:inline-block;margin:5px;'
+        f'padding:12px 16px;border:1px solid #b7dfc2;border-radius:8px;'
+        f'background-color:#eaf7ed;color:#145c2b;font-size:18px;'
+        f'font-weight:700;line-height:1">#{ticket}</span>'
         for ticket in sorted(new_tickets)
     )
     all_numbers = ", ".join(f"#{ticket}" for ticket in sorted(all_tickets))
-    subject = f"Your {config.ORG_NAME} ticket numbers"
+    ticket_word = "ticket" if len(new_tickets) == 1 else "tickets"
+    allocation_verb = "has" if len(new_tickets) == 1 else "have"
+    subject = f"Your {config.ORG_NAME} ticket numbers are confirmed"
     html_body = f"""
 <!doctype html>
-<html><body style="margin:0;background:#f6f5f1;font-family:Arial,sans-serif;color:#14202b">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px">
-<tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#fff;border:1px solid #e3e1da;border-radius:16px;overflow:hidden">
-<tr><td style="padding:30px;background:#17324d;color:#fff"><div style="font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#8ec9d6">{safe_org}</div><h1 style="margin:8px 0 0;font-size:30px">Your tickets are ready</h1></td></tr>
-<tr><td style="padding:30px"><p style="font-size:17px">Hello {safe_name},</p><p>Your newly allocated Reverse Draw ticket numbers are:</p><div style="margin:18px 0">{new_chips}</div><p style="color:#3e4852"><b>All of your current tickets:</b><br>{html.escape(all_numbers)}</p><div style="margin:26px 0;padding:18px;border-radius:12px;background:#fdf1cc;color:#7a5700"><b>Prize: {safe_prize}</b><br>Keep these numbers handy and follow the live draw board.</div><p><a href="{safe_url}" style="display:inline-block;padding:13px 20px;border-radius:10px;background:#17324d;color:#fff;text-decoration:none;font-weight:700">Open the public board</a></p><p style="margin-top:30px;font-size:13px;color:#5b6570">This message was sent because new tickets were allocated to your email address. Please contact the draw organizer if anything looks incorrect.</p></td></tr>
-</table></td></tr></table></body></html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<style>
+@keyframes ticketReveal {{
+    0% {{ opacity:0; transform:translateY(8px) scale(.96); }}
+    100% {{ opacity:1; transform:translateY(0) scale(1); }}
+}}
+.ticket-chip {{ animation:ticketReveal .65s ease-out both; }}
+@media (prefers-reduced-motion: reduce) {{
+    .ticket-chip {{ animation:none !important; }}
+}}
+@media only screen and (max-width:620px) {{
+    .email-shell {{ width:100% !important; }}
+    .email-pad {{ padding-left:22px !important; padding-right:22px !important; }}
+    .email-title {{ font-size:28px !important; }}
+}}
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#eef1f4;color:#172534;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Your personalized {safe_org} ticket confirmation is inside.</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#eef1f4">
+<tr><td align="center" style="padding:30px 12px">
+<table class="email-shell" role="presentation" width="620" cellspacing="0" cellpadding="0" border="0" style="width:620px;max-width:620px;background-color:#ffffff;border:1px solid #dfe4e8;border-radius:14px">
+<tr><td height="7" bgcolor="#e9ad24" style="height:7px;line-height:7px;font-size:1px;border-radius:14px 14px 0 0">&nbsp;</td></tr>
+<tr><td class="email-pad" bgcolor="#17324d" style="padding:32px 38px;background-color:#17324d;color:#ffffff">
+    <div style="font-size:12px;line-height:18px;letter-spacing:1.8px;text-transform:uppercase;color:#a9dce5;font-weight:700">{safe_org}</div>
+    <h1 class="email-title" style="margin:8px 0 6px;font-size:34px;line-height:42px;color:#ffffff;font-weight:700">You're officially in.</h1>
+    <p style="margin:0;font-size:16px;line-height:24px;color:#dce8f1">Your personalized ticket confirmation</p>
+</td></tr>
+<tr><td class="email-pad" style="padding:34px 38px 12px">
+    <p style="margin:0 0 16px;font-size:18px;line-height:28px;color:#172534">Hello {safe_name},</p>
+    <p style="margin:0;font-size:16px;line-height:25px;color:#425466">Your new {ticket_word} for the <strong style="color:#172534">{safe_org}</strong> {allocation_verb} been allocated. Keep this email for your records.</p>
+</td></tr>
+<tr><td class="email-pad" align="center" style="padding:18px 38px 28px">
+    <div style="margin-bottom:12px;font-size:12px;line-height:18px;letter-spacing:1.5px;text-transform:uppercase;color:#657687;font-weight:700">Your new {ticket_word}</div>
+    <div>{new_chips}</div>
+</td></tr>
+<tr><td class="email-pad" style="padding:0 38px 26px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f5f7f8" style="background-color:#f5f7f8;border:1px solid #e1e6e9;border-radius:10px">
+        <tr><td style="padding:18px 20px">
+            <div style="font-size:13px;line-height:19px;color:#657687;font-weight:700">ALL OF YOUR CURRENT TICKETS</div>
+            <div style="margin-top:5px;font-size:16px;line-height:26px;color:#172534;font-weight:700">{html.escape(all_numbers)}</div>
+        </td></tr>
+    </table>
+</td></tr>
+<tr><td class="email-pad" style="padding:0 38px 28px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#fff5d9" style="background-color:#fff5d9;border-left:5px solid #e9ad24;border-radius:8px">
+        <tr><td style="padding:18px 20px;color:#614900">
+            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Grand prize</div>
+            <div style="margin-top:2px;font-size:24px;line-height:32px;font-weight:700">{safe_prize}</div>
+        </td></tr>
+    </table>
+</td></tr>
+<tr><td class="email-pad" align="center" style="padding:0 38px 32px">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td bgcolor="#176b3a" style="background-color:#176b3a;border-radius:8px">
+        <a href="{safe_url}" style="display:inline-block;padding:14px 24px;color:#ffffff;font-size:16px;line-height:20px;text-decoration:none;font-weight:700">View the live draw board&nbsp; →</a>
+    </td></tr></table>
+    <p style="margin:14px 0 0;font-size:12px;line-height:19px;color:#71808e">If the button does not work, copy this address:<br><a href="{safe_url}" style="color:#315f83;word-break:break-all">{safe_url}</a></p>
+</td></tr>
+<tr><td class="email-pad" bgcolor="#f7f8f9" style="padding:24px 38px;background-color:#f7f8f9;border-top:1px solid #e5e9ec;border-radius:0 0 14px 14px">
+    <p style="margin:0 0 8px;font-size:13px;line-height:20px;color:#526271"><strong style="color:#283846">Why did I receive this?</strong><br>This confirmation was sent because tickets were allocated to your email address.</p>
+    <p style="margin:0;font-size:12px;line-height:19px;color:#71808e">Questions or incorrect ticket numbers? Reply directly to this email to contact the draw organizer.</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>
 """.strip()
     text_body = (
+        f"{config.ORG_NAME} — TICKET CONFIRMATION\n\n"
         f"Hello {name},\n\n"
-        f"Your new {config.ORG_NAME} tickets: "
+        f"You're officially in. Your new {config.ORG_NAME} {ticket_word}: "
         f"{', '.join(f'#{ticket}' for ticket in sorted(new_tickets))}\n\n"
         f"All current tickets: {all_numbers}\n"
-        f"Prize: {config.PRIZE_TEXT}\n"
-        f"Public board: {app_url}\n"
+        f"Grand prize: {config.PRIZE_TEXT}\n\n"
+        f"View the live draw board: {app_url}\n\n"
+        "This confirmation was sent because tickets were allocated to your "
+        "email address. Reply to this email if anything looks incorrect.\n"
     )
     return subject, html_body, text_body

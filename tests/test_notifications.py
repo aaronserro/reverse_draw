@@ -183,6 +183,9 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertNotIn("<Jane>", html_body)
         self.assertIn("&lt;Jane&gt;", html_body)
         self.assertIn("#7, #9", text_body)
+        self.assertIn("@keyframes ticketReveal", html_body)
+        self.assertIn("Why did I receive this?", html_body)
+        self.assertIn("Reply to this email", text_body)
 
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
         values = {
