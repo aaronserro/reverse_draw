@@ -118,7 +118,7 @@
           </div>
 
           <div data-pane="holders">
-            <p class="hint">Load a CSV/Excel file or enter <code>ticket,name</code> rows. Order-form exports are converted to ticket holders automatically using purchaser name, quantity, and preferred ticket columns.</p>
+            <p class="hint">Load a CSV/Excel file — or drop one anywhere on this page — or enter <code>ticket,name</code> rows by hand. Order-form exports are read with pandas and converted to ticket holders using the name, quantity and preferred ticket columns; each person's orders are combined and tickets are allocated in holder order.</p>
             <textarea class="input" id="holdersCsv" spellcheck="false" placeholder="ticket,name&#10;1,Jane Doe&#10;2,Bob Smith"></textarea>
             <div class="field-row" style="margin-top:10px; justify-content:space-between">
               <label class="btn file-btn">📄 Load CSV or Excel…<input type="file" id="csvFile" accept=".csv,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
@@ -127,6 +127,8 @@
                 <button class="btn primary" id="saveHolders" title="Replace all holders with exactly this list">Save (replace all)</button>
               </div>
             </div>
+
+            <div id="uploadPreview"></div>
 
             <div class="section-title">Assign a block of tickets</div>
             <div class="field-row">

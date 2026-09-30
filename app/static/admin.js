@@ -259,20 +259,21 @@
 
   $("holdersCsv").addEventListener("input", () => { csvDirty = true; });
 
-  $("csvFile").addEventListener("change", async (ev) => {
-    const f = ev.target.files[0];
-    if (!f) return;
-    const picker = ev.target;
+  // The server reads the workbook with pandas and returns ticket,name rows, so
+  // the file's bytes must never reach the textarea.
+  async function uploadHolderFile(file) {
+    const picker = $("csvFile");
     const label = picker.closest("label");
     const originalLabel = label.firstChild.textContent;
     label.firstChild.textContent = "Loading…";
     picker.disabled = true;
+    $("uploadPreview").innerHTML = "";
     try {
-      const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(f.name)}`, {
+      const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(file.name)}`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/octet-stream" },
-        body: f,
+        body: file,
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
@@ -283,7 +284,8 @@
       $("holdersCsv").value = result.csv;
       if (!result.imported) throw new Error("No valid ticket holders were found in the uploaded data.");
       csvDirty = true;
-      RD.toast(`Loaded ${result.imported} ticket holder(s) from ${f.name}. Review, then Save or Merge.`);
+      renderUploadPreview(result, file.name);
+      RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
     } catch (e) {
       if (e.status === 401) show("login");
       else RD.toast(e.message, true);
@@ -292,6 +294,47 @@
       picker.disabled = false;
       picker.value = "";
     }
+  }
+
+  // Shows how the tickets were allocated per holder, before anything is saved.
+  function renderUploadPreview(result, filename) {
+    const rows = result.people.map((p) =>
+      `<tr><td><b>${RD.esc(p.name)}</b></td><td class="r">${RD.fmt(p.tickets.length)}</td>` +
+      `<td class="small muted">${p.tickets.join(", ")}</td></tr>`).join("");
+    $("uploadPreview").innerHTML =
+      `<div class="section-title">Allocation from ${RD.esc(filename)} — not saved yet</div>` +
+      `<p class="hint">${RD.fmt(result.imported)} ticket(s) across ${RD.fmt(result.people.length)} holder(s), ` +
+      `sorted by holder. Use Save or Merge above to apply it.</p>` +
+      `<div class="scroll" style="max-height:260px"><table>` +
+      `<tr><th>Holder</th><th class="r">Tickets</th><th>Ticket numbers</th></tr>${rows}</table></div>`;
+  }
+
+  $("csvFile").addEventListener("change", (ev) => {
+    const file = ev.target.files[0];
+    if (file) uploadHolderFile(file);
+  });
+
+  // Dropping a workbook on the page used to paste its raw bytes into the
+  // textarea (or navigate away). Send it to the parser instead, wherever it lands.
+  const dropZone = document.querySelector('[data-pane="holders"]');
+  const hasFiles = (ev) => [...(ev.dataTransfer?.types || [])].includes("Files");
+
+  document.addEventListener("dragover", (ev) => {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "copy";
+    dropZone.classList.add("dropping");
+  });
+  ["dragleave", "dragend"].forEach((name) =>
+    document.addEventListener(name, () => dropZone.classList.remove("dropping")));
+  document.addEventListener("drop", (ev) => {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault();
+    dropZone.classList.remove("dropping");
+    const file = ev.dataTransfer.files[0];
+    if (!file) return;
+    showTab("holders");
+    uploadHolderFile(file);
   });
 
   async function saveHolders(mode) {
@@ -320,11 +363,12 @@
   $("search").addEventListener("input", renderSearch);
   $("peopleFilter").addEventListener("input", renderPeople);
 
+  function showTab(name) {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+    document.querySelectorAll("[data-pane]").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== name));
+  }
   document.querySelectorAll(".tab").forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b === btn));
-      document.querySelectorAll("[data-pane]").forEach((p) => p.classList.toggle("hidden", p.dataset.pane !== btn.dataset.tab));
-    };
+    btn.onclick = () => showTab(btn.dataset.tab);
   });
 
   document.addEventListener("visibilitychange", () => { if (!document.hidden && state) load(); });

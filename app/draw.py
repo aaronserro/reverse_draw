@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import io
 import random
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -23,6 +24,18 @@ from . import config
 
 class DrawError(ValueError):
     pass
+
+
+# Leading bytes of the files people drop into the CSV box by mistake: xlsx/zip,
+# legacy .xls compound documents, and PDFs.
+BINARY_HEADS = ("PK\x03\x04", "\xd0\xcf\x11\xe0", "%PDF")
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f�]")
+
+
+def looks_binary(text: str) -> bool:
+    """True when `text` is a spreadsheet's raw bytes rather than CSV rows."""
+    head = text[:4096]
+    return head.startswith(BINARY_HEADS) or "\x00" in head or head.count("�") > 8
 
 
 def now_iso() -> str:
@@ -167,7 +180,8 @@ class ReverseDraw:
     def set_owners(self, mapping: dict[int, str]) -> None:
         clean: dict[int, str] = {}
         for t, n in mapping.items():
-            t, n = int(t), str(n or "").strip()
+            # Strip control characters so stray bytes can never become a holder.
+            t, n = int(t), CONTROL_CHARS.sub("", str(n or "")).strip()
             if 1 <= t <= self.total and n:
                 clean[t] = n[:120]
         self.owners = clean
@@ -186,8 +200,18 @@ class ReverseDraw:
     # ---- CSV ------------------------------------------------------------------
     def parse_owner_csv(self, text: str) -> dict[int, str]:
         """Rows of `ticket,name`. A header row or junk rows are skipped."""
+        if looks_binary(text):
+            raise DrawError(
+                "That is a spreadsheet file's raw contents, not ticket,name rows. "
+                "Use “Load CSV or Excel…” to upload the file instead of "
+                "pasting or dropping it into the box."
+            )
+        try:
+            rows = list(csv.reader(io.StringIO(text)))
+        except csv.Error as error:
+            raise DrawError(f"Could not read those rows: {error}") from error
         out: dict[int, str] = {}
-        for row in csv.reader(io.StringIO(text)):
+        for row in rows:
             if len(row) < 2:
                 continue
             try:

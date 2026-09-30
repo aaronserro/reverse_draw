@@ -413,6 +413,14 @@ details.round.undone { opacity: .75; border-style: dashed; }
 .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); padding: 1px 6px; border-radius: 5px; }
 .file-btn input { display: none; }
+/* Shown while a workbook is dragged over the page. */
+.dropping { position: relative; }
+.dropping::after {
+  content: "Drop the file to read it"; position: absolute; inset: -8px; z-index: 5;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+  border: 2px dashed var(--teal); border-radius: var(--radius);
+  background: rgba(228, 237, 239, .92); color: var(--teal); font-weight: 600;
+}
 
 /* ------------------------------------------------------------------ full-screen round runner */
 dialog.round-stage {

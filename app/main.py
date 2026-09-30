@@ -426,12 +426,15 @@ class HoldersIn(BaseModel):
 
 @app.put("/api/admin/holders", dependencies=admin)
 def put_holders(body: HoldersIn):
-    with Mutation() as d:
-        mapping = d.parse_owner_csv(body.csv)
-        d.set_owners(mapping if body.mode == "replace" else {**d.owners, **mapping})
-        out = admin_payload(d)
-        out["imported"] = len(mapping)
-        return out
+    try:
+        with Mutation() as d:
+            mapping = d.parse_owner_csv(body.csv)
+            d.set_owners(mapping if body.mode == "replace" else {**d.owners, **mapping})
+            out = admin_payload(d)
+            out["imported"] = len(mapping)
+            return out
+    except DrawError as e:
+        bad_request(e)
 
 
 def _read_upload_dataframe(data: bytes, filename: str) -> pd.DataFrame:
@@ -491,38 +494,107 @@ def _assignment_dataframe(frame: pd.DataFrame) -> pd.DataFrame | None:
     )
 
 
-def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
-    """Expand the supplied Microsoft Forms order export into ticket holders."""
+NAME_HEADERS = (
+    "full name",
+    "name",
+    "purchaser",
+    "purchaser name",
+    "buyer",
+    "buyer name",
+    "holder",
+    "ticket holder",
+    "employee",
+    "employee name",
+    "attendee",
+    "attendee name",
+)
+QUANTITY_HEADERS = (
+    "quantity",
+    "qty",
+    "tickets",
+    "ticket quantity",
+    "number of tickets",
+    "no of tickets",
+    "# of tickets",
+    "how many tickets",
+)
+
+
+def _pick_column(columns: list[tuple[str, object]], headers: tuple[str, ...], *,
+                 contains: tuple[str, ...] = ()) -> object | None:
+    """First column matching one of `headers` exactly, else one containing a phrase."""
+    for header in headers:
+        for key, column in columns:
+            if key == header:
+                return column
+    for phrase in contains:
+        for key, column in columns:
+            if phrase in key:
+                return column
+    return None
+
+
+def _choice_numbers(value: object) -> list[int]:
+    """Ticket numbers written in one 'preferred ticket number' answer."""
+    return [int(n) for n in re.findall(r"\d+", str(value or ""))]
+
+
+def _orders_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
+    """One row per order: who bought, how many, and which numbers they asked for."""
     columns = [(_column_key(column), column) for column in frame.columns]
-    name_column = next(
-        (column for key, column in columns if key == "full name"), None
-    )
-    quantity_column = next(
-        (
-            column
-            for key, column in columns
-            if key.startswith("how many united way reverse draw")
-        ),
-        None,
+    name_column = _pick_column(columns, NAME_HEADERS, contains=("name",))
+    quantity_column = _pick_column(
+        columns, QUANTITY_HEADERS, contains=("how many", "quantity")
     )
     preference_columns = [
         column
         for key, column in columns
-        if "choice ticket number" in key
+        if column != quantity_column
+        and ("choice" in key and "ticket" in key or "preferred ticket" in key)
     ]
     if name_column is None or quantity_column is None:
         raise DrawError(
-            "No ticket/name columns or Reverse Draw order columns were found."
+            "No ticket/name columns were found, and no order columns either. "
+            "The file needs a name column and a ticket quantity column."
         )
 
-    orders = frame[[name_column, quantity_column, *preference_columns]].copy()
-    orders["name"] = orders[name_column].fillna("").astype(str).str.strip()
-    orders["quantity"] = pd.to_numeric(
-        orders[quantity_column].astype(str).str.extract(r"(\d+)")[0],
-        errors="coerce",
-    ).fillna(0).astype(int)
-    orders = orders[(orders["name"] != "") & (orders["quantity"] > 0)]
-    requested = int(orders["quantity"].sum())
+    orders = pd.DataFrame(
+        {
+            "name": frame[name_column].fillna("").astype(str).str.strip(),
+            "quantity": pd.to_numeric(
+                frame[quantity_column].astype(str).str.extract(r"(\d+)")[0],
+                errors="coerce",
+            )
+            .fillna(0)
+            .astype(int),
+        }
+    )
+    # Per order, the numbers that order asked for, in preference order.
+    orders["choices"] = [
+        [n for column in preference_columns for n in _choice_numbers(row[column])]
+        for _, row in frame.iterrows()
+    ]
+    return orders[(orders["name"] != "") & (orders["quantity"] > 0)]
+
+
+def _holders_by_name(orders: pd.DataFrame) -> pd.DataFrame:
+    """Combine each person's orders into one row, sorted by holder name."""
+    orders = orders.assign(key=orders["name"].str.casefold())
+    grouped = orders.groupby("key", sort=False)
+    people = pd.DataFrame(
+        {"name": grouped["name"].first(), "quantity": grouped["quantity"].sum()}
+    )
+    # Kept as a list per order, because one order's numbers are alternatives.
+    people["choices"] = grouped["choices"].apply(list)
+    return people.sort_values(
+        "name", key=lambda names: names.str.casefold()
+    ).reset_index(drop=True)
+
+
+def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
+    """Expand an order export into ticket holders, allocated in holder order."""
+    people = _holders_by_name(_orders_dataframe(frame))
+    requested = int(people["quantity"].sum())
     if requested > total:
         raise DrawError(
             f"The file requests {requested:,} tickets, but the draw has only "
@@ -530,36 +602,31 @@ def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
         )
 
     assignments: dict[int, str] = {}
-    order_tickets: dict[object, list[int]] = {}
+    reserved: dict[int, int] = {}
 
-    # Ticket choices are alternatives. Reserve at most one valid preference
-    # per order, in upload order, before filling the remaining ticket numbers.
-    for index, order in orders.iterrows():
-        allocated: list[int] = []
-        for column in preference_columns:
-            match = re.search(r"\d+", str(order[column]))
-            preferred = int(match.group()) if match else 0
-            if 1 <= preferred <= total and preferred not in assignments:
-                assignments[preferred] = order["name"]
-                allocated.append(preferred)
+    # The numbers offered on one order row are alternatives, so each row wins at
+    # most one of them. Holders are served alphabetically, so the same file
+    # always allocates the same way.
+    for index, person in people.iterrows():
+        taken = 0
+        for order_choices in person["choices"]:
+            if taken >= person["quantity"]:
                 break
-        order_tickets[index] = allocated
+            for preferred in order_choices:
+                if 1 <= preferred <= total and preferred not in assignments:
+                    assignments[preferred] = person["name"]
+                    taken += 1
+                    break
+        reserved[index] = taken
 
-    available = (
-        ticket
-        for ticket in range(1, total + 1)
-        if ticket not in assignments
-    )
-    for index, order in orders.iterrows():
-        allocated = order_tickets[index]
-        for _ in range(int(order["quantity"]) - len(allocated)):
-            ticket = next(available)
-            assignments[ticket] = order["name"]
-            allocated.append(ticket)
+    # Everyone else is filled from the lowest free numbers, still in holder
+    # order, so each person's tickets land together on the board.
+    available = (ticket for ticket in range(1, total + 1) if ticket not in assignments)
+    for index, person in people.iterrows():
+        for _ in range(int(person["quantity"]) - reserved[index]):
+            assignments[next(available)] = person["name"]
 
-    return pd.DataFrame(
-        sorted(assignments.items()), columns=["ticket", "name"]
-    )
+    return pd.DataFrame(sorted(assignments.items()), columns=["ticket", "name"])
 
 
 def _uploaded_holders_dataframe(
@@ -605,9 +672,14 @@ async def preview_holder_file(request: Request, filename: str):
     try:
         draw = load()
         holders = _uploaded_holders_dataframe(data, filename, draw.total)
+        # Per-person preview so the admin can check the allocation before saving.
+        people = holders.groupby("name", sort=True)["ticket"].agg(list)
         return {
             "csv": holders.to_csv(index=False),
             "imported": len(holders),
+            "people": [
+                {"name": name, "tickets": tickets} for name, tickets in people.items()
+            ],
         }
     except (DrawError, ValueError, KeyError, OSError) as error:
         bad_request(DrawError(f"Could not read {filename}: {error}"))
