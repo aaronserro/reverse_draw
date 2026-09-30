@@ -20,10 +20,10 @@ TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
 
 # Tickets still in after each round. Must be strictly decreasing.
 # The last number is how many winners there are (usually 1).
-ROUND_SURVIVORS = [500, 250, 100, 50, 1]
+ROUND_SURVIVORS = [500, 199, 199, 89]
 
 # One label per round (same length as ROUND_SURVIVORS).
-ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Finalists", "Grand Prize"]
+ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Round 4", "Grand Prize"]
 
 # Note: once Round 1 has run, the schedule is frozen for that draw.
 # Changes here take effect after an admin resets the draw.
