@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=9">
+  <link rel="stylesheet" href="/static/styles.css?v=10">
 </head>
 <body>
 
@@ -139,6 +139,14 @@
               <input class="input" type="number" id="blockEnd" placeholder="To #" min="1" style="flex:1 1 100px">
               <button class="btn" id="assignBlock">Assign</button>
             </div>
+
+            <div class="section-title">Deallocate tickets</div>
+            <p class="hint">Removes the holder from the selected tickets. Email delivery history remains untouched.</p>
+            <div class="field-row">
+              <input class="input" type="number" id="unassignStart" placeholder="From #" min="1" style="flex:1 1 120px">
+              <input class="input" type="number" id="unassignEnd" placeholder="To # (optional)" min="1" style="flex:1 1 140px">
+              <button class="btn danger" id="unassignBlock">Deallocate</button>
+            </div>
           </div>
 
           <div data-pane="people" class="hidden">
@@ -201,8 +209,8 @@
   </div>
 </dialog>
 
-<script src="/static/common.js?v=9"></script>
-<script src="/static/pwa.js?v=9"></script>
-<script src="/static/admin.js?v=9"></script>
+<script src="/static/common.js?v=10"></script>
+<script src="/static/pwa.js?v=10"></script>
+<script src="/static/admin.js?v=10"></script>
 </body>
 </html>

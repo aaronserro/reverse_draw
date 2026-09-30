@@ -213,6 +213,34 @@ class ReverseDraw:
         self.set_owners({**self.owners, **{t: name for t in range(lo, hi + 1)}})
         return hi - lo + 1
 
+    def unassign_block(self, start: int, end: int) -> int:
+        lo, hi = sorted((int(start), int(end)))
+        lo, hi = max(lo, 1), min(hi, self.total)
+        if lo > hi:
+            raise DrawError(f"Ticket range must be within 1-{self.total}.")
+        removed = sum(ticket in self.owners for ticket in range(lo, hi + 1))
+        self.set_owners(
+            {
+                ticket: holder
+                for ticket, holder in self.owners.items()
+                if not lo <= ticket <= hi
+            }
+        )
+        return removed
+
+    def unassign_holder(self, name: str) -> int:
+        key = re.sub(r"\s+", " ", name).strip().casefold()
+        if not key:
+            raise DrawError("Holder name is required.")
+        keep = {
+            ticket: holder
+            for ticket, holder in self.owners.items()
+            if re.sub(r"\s+", " ", holder).strip().casefold() != key
+        }
+        removed = len(self.owners) - len(keep)
+        self.set_owners(keep)
+        return removed
+
     # ---- CSV ------------------------------------------------------------------
     def parse_owner_csv(self, text: str) -> dict[int, str]:
         """Rows of `ticket,name`. A header row or junk rows are skipped."""

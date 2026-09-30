@@ -140,6 +140,36 @@ class NotificationPreviewTests(unittest.TestCase):
         self.assertFalse(preview["source_matches_allocation"])
         self.assertFalse(preview["ready"])
 
+    def test_deallocate_then_allocate_new_ticket_creates_one_pending_ticket(self):
+        draw = self.make_draw()
+        draw.notification_batches.append(
+            {
+                "status": "completed",
+                "jobs": [
+                    {
+                        "email": "jane@example.com",
+                        "status": "sent",
+                        "new_tickets": [1, 2],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(draw.unassign_block(1, 2), 2)
+        draw.assign_block("Jane Doe", 4, 4)
+        preview = _notification_preview(draw)
+        jane = next(
+            item
+            for item in preview["recipients"]
+            if item["email"] == "jane@example.com"
+        )
+        self.assertEqual(jane["new_tickets"], [4])
+        self.assertEqual(jane["all_tickets"], [4])
+
+    def test_deallocate_holder_removes_only_matching_person(self):
+        draw = self.make_draw()
+        self.assertEqual(draw.unassign_holder("  JANE   DOE "), 2)
+        self.assertEqual(draw.owners, {3: "Bob Smith"})
+
 
 class EmailTemplateTests(unittest.TestCase):
     def test_template_escapes_user_values_and_lists_tickets(self):

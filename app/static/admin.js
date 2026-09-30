@@ -95,9 +95,10 @@
     const rows = people.map((p) =>
       `<tr><td><b>${RD.esc(p.holder)}</b></td><td class="r">${p.tickets.length}</td>` +
       `<td class="r"><span class="tag ${p.still_in ? "in" : "out"}">${p.still_in}</span></td>` +
-      `<td class="small muted">${p.tickets.join(", ")}</td></tr>`).join("");
+      `<td class="small muted">${p.tickets.join(", ")}</td>` +
+      `<td class="r"><button class="btn sm" data-unassign-holder="${encodeURIComponent(p.holder)}">Deallocate</button></td></tr>`).join("");
     $("people").innerHTML = state.summary.length
-      ? `<tr><th>Holder</th><th class="r">Tickets</th><th class="r">Still in</th><th>Ticket numbers</th></tr>${rows}`
+      ? `<tr><th>Holder</th><th class="r">Tickets</th><th class="r">Still in</th><th>Ticket numbers</th><th></th></tr>${rows}`
       : `<tr><td class="muted">No holders assigned yet. Add them on the Ticket holders tab.</td></tr>`;
   }
 
@@ -510,6 +511,42 @@
       (s) => `Assigned ${RD.fmt(s.assigned)} ticket(s)`);
     if (ok) { csvDirty = false; $("holdersCsv").value = holdersToCsv(); $("blockName").value = $("blockStart").value = $("blockEnd").value = ""; }
   };
+
+  async function unassignTickets(body, description) {
+    const ok = await RD.confirm({
+      title: `Deallocate ${description}?`,
+      body: "The selected ticket assignments will be removed. Existing email delivery history will not be changed.",
+      confirmText: "Deallocate",
+      danger: true,
+    });
+    if (!ok) return false;
+    const changed = await act(
+      () => RD.api("/api/admin/holders/unassign", { method: "POST", body }),
+      (s) => `Deallocated ${RD.fmt(s.unassigned)} ticket(s)`,
+    );
+    if (changed) {
+      csvDirty = false;
+      $("holdersCsv").value = holdersToCsv();
+      loadNotifications();
+    }
+    return changed;
+  }
+
+  $("unassignBlock").onclick = () => {
+    const start = Number($("unassignStart").value);
+    if (!start) { RD.toast("Enter a ticket number to deallocate.", true); return; }
+    const end = Number($("unassignEnd").value || start);
+    unassignTickets({ start, end }, start === end ? `ticket #${start}` : `tickets #${start}–#${end}`).then((changed) => {
+      if (changed) $("unassignStart").value = $("unassignEnd").value = "";
+    });
+  };
+
+  $("people").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-unassign-holder]");
+    if (!button) return;
+    const name = decodeURIComponent(button.dataset.unassignHolder);
+    unassignTickets({ name }, `all tickets for ${name}`);
+  });
 
   $("search").addEventListener("input", renderSearch);
   $("peopleFilter").addEventListener("input", renderPeople);

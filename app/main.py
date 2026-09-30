@@ -1167,6 +1167,12 @@ class BlockIn(BaseModel):
     end: int
 
 
+class UnassignIn(BaseModel):
+    start: int | None = None
+    end: int | None = None
+    name: str = ""
+
+
 @app.post("/api/admin/holders/block", dependencies=admin)
 def assign_block(body: BlockIn):
     try:
@@ -1177,6 +1183,25 @@ def assign_block(body: BlockIn):
             return out
     except DrawError as e:
         bad_request(e)
+
+
+@app.post("/api/admin/holders/unassign", dependencies=admin)
+def unassign_holders(body: UnassignIn):
+    try:
+        with Mutation() as draw:
+            if body.name.strip():
+                removed = draw.unassign_holder(body.name)
+            elif body.start is not None:
+                removed = draw.unassign_block(
+                    body.start, body.end if body.end is not None else body.start
+                )
+            else:
+                raise DrawError("Enter a holder name or ticket range.")
+            out = admin_payload(draw)
+            out["unassigned"] = removed
+            return out
+    except DrawError as error:
+        bad_request(error)
 
 
 def csv_response(text: str, name: str) -> PlainTextResponse:
