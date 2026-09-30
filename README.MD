@@ -67,7 +67,7 @@ git push -u origin main
 
 After that, every push to `main` redeploys the site.
 
-## Ticket emails with free Gmail SMTP
+## Ticket emails on free Render
 
 The **Email tickets** admin tab reviews everyone with new ticket allocations and
 sends one private, personalized message per recipient. A successful
@@ -80,67 +80,53 @@ Sending is always manual: upload the complete spreadsheet, review and Save or
 Merge the allocation, open **Email tickets**, review the recipient list, and
 choose **Send all pending emails**.
 
-No Microsoft tenant or paid email service is required. A normal Gmail account
-can send through Gmail SMTP at no additional charge. For this event's roughly
-80 recipient addresses, Gmail's normal personal-account daily sending limit is
-sufficient. Google can change its limits and anti-spam policies, so send a test
-message before the event.
+Free Render services block outbound ports 25, 465 and 587, so Gmail SMTP cannot
+work from a free Render instance. Production uses Brevo's free transactional
+email API over HTTPS instead. No Microsoft tenant or organization administrator
+is required.
 
-### 1. Create a Gmail app password
+### 1. Create the free Brevo sender
 
-1. Choose the Gmail account that will send the messages.
-2. Turn on **2-Step Verification** for that Google account.
-3. Open the Google Account **App passwords** page.
-4. Create an app password named `Reverse Draw`.
-5. Copy the generated 16-character password. This is `SMTP_PASSWORD`; do not
-  use the account's normal Google password.
+1. Create a free account at `brevo.com` (the free plan does not require a credit
+  card).
+2. In **Settings → Senders, Domains & Dedicated IPs → Senders**, add the Gmail
+  address and sender name used for the draw.
+3. Open the verification message Brevo sends to that Gmail inbox and confirm
+  the sender.
+4. In **SMTP & API → API Keys**, generate an API key named `Reverse Draw` and
+  copy it immediately.
+5. Confirm the free account's available email credits cover the pending count
+  shown by the app before starting the batch.
 
-### 2. Set the environment variables
+### 2. Set the Render environment variables
 
-Use these exact names and values (replace the example account, password, name,
-and URL):
+Use these exact names in **Render → reverse-draw → Environment**:
 
 ```dotenv
-EMAIL_PROVIDER=smtp
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURITY=starttls
-SMTP_USERNAME=your.sender.account@gmail.com
-SMTP_PASSWORD=the-16-character-google-app-password
+EMAIL_PROVIDER=brevo
+BREVO_API_KEY=the-api-key-generated-by-brevo
 EMAIL_SENDER_ADDRESS=your.sender.account@gmail.com
 EMAIL_SENDER_NAME=United Way Reverse Draw
 PUBLIC_APP_URL=https://reverse-draw-xxxx.onrender.com
 ```
 
-- `EMAIL_PROVIDER`: exactly `smtp`.
-- `SMTP_HOST`: exactly `smtp.gmail.com` for Gmail.
-- `SMTP_PORT`: exactly `587` when using `starttls`.
-- `SMTP_SECURITY`: exactly `starttls`.
-- `SMTP_USERNAME`: the full Gmail address used to sign in.
-- `SMTP_PASSWORD`: the Google app password, with spaces removed.
-- `EMAIL_SENDER_ADDRESS`: the address recipients see in **From**. Use the same
-  address as `SMTP_USERNAME`, unless Gmail has already verified another Send As
-  alias for this account. It falls back to `SMTP_USERNAME` if omitted.
+- `EMAIL_PROVIDER`: exactly `brevo`.
+- `BREVO_API_KEY`: the Brevo API key; never commit it to GitHub.
+- `EMAIL_SENDER_ADDRESS`: the Gmail address registered and verified in Brevo.
 - `EMAIL_SENDER_NAME`: the changeable display name recipients see, such as
   `United Way Reverse Draw`. It can be changed without changing credentials.
 - `PUBLIC_APP_URL`: the deployed site's full `https://` origin, with no trailing
   slash and no `/admin` path.
 
-For local development, store these lines in `.env` in the project root. That
-file is excluded by `.gitignore` and must never be committed. Restart Uvicorn
-after changing it.
+Save the Render environment and allow it to redeploy. The admin panel should
+then show **Provider: BREVO** and the verified sender. A definite API rejection
+remains pending for retry. A network timeout is marked **unknown**; check
+Brevo's **Transactional → Logs** before choosing **Mark delivered** or
+**Allow retry** in the batch history.
 
-For production, open the Render dashboard, select the web service, then open
-**Environment** and add the same keys there. Render stores the secret values;
-they do not belong in `app/config.py`, GitHub, or `render.yaml`. Save the changes
-and let Render redeploy. To change the sender later, update
-`EMAIL_SENDER_ADDRESS` and `EMAIL_SENDER_NAME` in Render and redeploy. Gmail will
-not permit an arbitrary unverified From address.
-
-A definite SMTP rejection remains pending for a later retry. A network timeout
-after submission is marked **unknown** and blocked from automatic retry to avoid
-a duplicate; check the Gmail Sent folder, then use **Mark delivered** or
-**Allow retry** in the email batch history.
+Gmail SMTP remains supported for local development or a paid host that permits
+SMTP. Set `EMAIL_PROVIDER=smtp`, the Gmail SMTP host/port/security, username,
+Google app password and sender variables from `.env.example` in that environment.
 
 Microsoft Graph remains supported for existing deployments by setting
 `EMAIL_PROVIDER=graph` together with `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`,
