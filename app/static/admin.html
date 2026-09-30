@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Reverse Draw Admin</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<!-- Login -->
+<main class="wrap hidden" id="loginView">
+  <form class="panel login stack" id="loginForm">
+    <h2>Reverse Draw admin</h2>
+    <input type="password" id="password" placeholder="Admin password" autocomplete="current-password" required>
+    <button class="btn primary block" type="submit">Log in</button>
+    <div class="small muted"><a href="/">Back to the public board</a></div>
+  </form>
+</main>
+
+<!-- Admin app -->
+<main class="wrap hidden" id="appView">
+  <div class="topbar">
+    <h1>Reverse Draw admin</h1>
+    <div class="row">
+      <a class="btn" href="/" target="_blank" rel="noopener">Open public page ↗</a>
+      <button class="btn" id="logout">Log out</button>
+    </div>
+  </div>
+
+  <div class="banner err hidden" id="warnNoDb">
+    No database is connected (DATABASE_URL is not set). Everything will be lost when the server restarts.
+  </div>
+  <div class="banner warn hidden" id="warnSchedule">
+    The round settings in config.py changed after this draw started. The current draw keeps its original schedule;
+    reset the draw to use the new settings.
+  </div>
+
+  <div class="layout">
+    <aside class="side">
+      <div class="panel">
+        <h2>Draw controls</h2>
+        <ul class="steps" id="steps"></ul>
+        <div class="stack">
+          <button class="btn primary block" id="runNext">Run next round</button>
+          <button class="btn block" id="undo">Undo last round</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <details>
+          <summary>Reset draw</summary>
+          <div class="stack" style="margin-top:10px">
+            <label class="chk"><input type="checkbox" id="keepHolders" checked> Keep ticket holders</label>
+            <input type="text" id="resetConfirm" placeholder='Type RESET to confirm'>
+            <button class="btn danger block" id="reset">Reset</button>
+          </div>
+        </details>
+        <div class="stack">
+          <a class="btn block" href="/api/admin/export/log.csv">Download elimination log (CSV)</a>
+          <a class="btn block" href="/api/admin/export/tickets.csv">Download ticket status (CSV)</a>
+          <a class="btn block" href="/api/admin/export/holders.csv">Download ticket holders (CSV)</a>
+        </div>
+      </div>
+    </aside>
+
+    <section>
+      <div class="stats">
+        <div class="stat"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
+        <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
+        <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
+      </div>
+
+      <article class="post">
+        <div class="meta">Posted in <span id="postedIn"></span> · <span class="muted">preview of the public page</span></div>
+        <div class="org">
+          <div class="avatar" id="avatar"></div>
+          <div><b id="orgName"></b><div class="meta" id="stamp"></div></div>
+        </div>
+        <h1 id="headline"></h1>
+        <p id="announce"></p>
+        <p id="closing"></p>
+
+        <div style="margin-top:14px">
+          <input type="text" id="search" autocomplete="off" placeholder="Highlight a holder or ticket (e.g. Jane or 417)">
+          <div class="result" id="searchResult"></div>
+        </div>
+        <div class="board-wrap"><div class="board" id="board"></div></div>
+        <div class="legend">
+          <span><i style="background:var(--c-active)"></i>Still in</span>
+          <span><i style="background:var(--c-last)"></i>Out this round</span>
+          <span><i style="background:var(--c-out)"></i>Out earlier</span>
+          <span><i style="background:var(--c-win)"></i>Winner</span>
+          <span><i style="background:var(--c-hl)"></i>Search match</span>
+        </div>
+      </article>
+
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab on" data-tab="holders">Ticket holders</button>
+          <button class="tab" data-tab="people">By person</button>
+          <button class="tab" data-tab="log">Elimination log</button>
+        </div>
+
+        <div data-pane="holders">
+          <p class="small muted">One line per ticket: <code>ticket,name</code>. A header row is fine. Tickets not listed are unassigned.</p>
+          <textarea id="holdersCsv" spellcheck="false"></textarea>
+          <div class="row" style="margin-top:8px">
+            <label class="btn">Load CSV file…<input type="file" id="csvFile" accept=".csv,text/csv" hidden></label>
+            <span></span>
+            <button class="btn" id="mergeHolders" title="Add/overwrite the listed tickets, keep everyone else">Merge</button>
+            <button class="btn primary" id="saveHolders" title="Replace all holders with exactly this list">Save (replace all)</button>
+          </div>
+
+          <h2 style="margin-top:22px">Assign a block of tickets</h2>
+          <div class="row">
+            <input type="text" id="blockName" placeholder="Name" style="flex:2 1 180px">
+            <input type="number" id="blockStart" placeholder="From" min="1" style="flex:1 1 90px">
+            <input type="number" id="blockEnd" placeholder="To" min="1" style="flex:1 1 90px">
+            <button class="btn" id="assignBlock">Assign</button>
+          </div>
+        </div>
+
+        <div data-pane="people" class="hidden">
+          <div class="scroll"><table id="people"></table></div>
+        </div>
+
+        <div data-pane="log" class="hidden">
+          <div id="log"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

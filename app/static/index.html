@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reverse Draw</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<main class="wrap">
+  <div class="stats">
+    <div class="stat"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
+    <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
+    <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
+  </div>
+
+  <article class="post">
+    <div class="meta">Posted in <span id="postedIn"></span></div>
+    <div class="org">
+      <div class="avatar" id="avatar"></div>
+      <div><b id="orgName"></b><div class="meta" id="stamp"></div></div>
+    </div>
+    <h1 id="headline">Loading…</h1>
+    <p id="announce"></p>
+    <p id="closing"></p>
+
+    <div class="board-wrap"><div class="board" id="board"></div></div>
+    <div class="legend">
+      <span><i style="background:var(--c-active)"></i>Still in</span>
+      <span><i style="background:var(--c-last)"></i>Out this round</span>
+      <span><i style="background:var(--c-out)"></i>Out earlier</span>
+      <span><i style="background:var(--c-win)"></i>Winner</span>
+    </div>
+  </article>
+
+  <section class="panel">
+    <h2>Am I still in?</h2>
+    <input type="text" id="lookup" inputmode="search" autocomplete="off" placeholder="Enter your ticket number">
+    <div class="result" id="lookupResult"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Rounds</h2>
+    <ul class="history" id="history"></ul>
+  </section>
+</main>
+
+<script src="/static/common.js"></script>
+<script src="/static/public.js"></script>
+</body>
+</html>
