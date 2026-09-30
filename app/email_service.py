@@ -39,6 +39,98 @@ class EmailClient(Protocol):
 
 
 @dataclass(frozen=True)
+class BrevoEmailConfig:
+    api_key: str
+    sender: str
+    sender_name: str
+    app_url: str
+    provider: str = "brevo"
+
+    @classmethod
+    def from_env(cls) -> BrevoEmailConfig:
+        return cls(
+            api_key=os.getenv("BREVO_API_KEY", "").strip(),
+            sender=os.getenv("EMAIL_SENDER_ADDRESS", "").strip(),
+            sender_name=(
+                os.getenv("EMAIL_SENDER_NAME", "").strip() or config.ORG_NAME
+            ),
+            app_url=os.getenv("PUBLIC_APP_URL", "").strip().rstrip("/"),
+        )
+
+    @property
+    def configured(self) -> bool:
+        return not self.missing
+
+    @property
+    def missing(self) -> list[str]:
+        values = {
+            "BREVO_API_KEY": self.api_key,
+            "EMAIL_SENDER_ADDRESS": self.sender,
+            "PUBLIC_APP_URL": self.app_url,
+        }
+        return [name for name, value in values.items() if not value]
+
+
+class BrevoEmailClient:
+    def __init__(self, settings: BrevoEmailConfig) -> None:
+        self.settings = settings
+
+    def send_ticket_email(
+        self,
+        *,
+        recipient: str,
+        name: str,
+        new_tickets: list[int],
+        all_tickets: list[int],
+    ) -> dict:
+        if not self.settings.configured:
+            raise EmailSendError("Brevo email is not configured.")
+        subject, html_body, _ = render_ticket_email(
+            name=name,
+            new_tickets=new_tickets,
+            all_tickets=all_tickets,
+            app_url=self.settings.app_url,
+        )
+        payload = {
+            "sender": {
+                "email": self.settings.sender,
+                "name": self.settings.sender_name,
+            },
+            "to": [{"email": recipient, "name": name}],
+            "subject": subject,
+            "htmlContent": html_body,
+            "tags": ["reverse-draw-tickets"],
+        }
+        request = urllib.request.Request(
+            "https://api.brevo.com/v3/smtp/email",
+            data=json.dumps(payload).encode(),
+            headers={
+                "accept": "application/json",
+                "api-key": self.settings.api_key,
+                "content-type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                result = json.loads(response.read() or b"{}")
+                return {
+                    "status_code": response.status,
+                    "request_id": str(result.get("messageId", "")),
+                }
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode(errors="replace")[:500]
+            raise EmailSendError(
+                f"Brevo rejected the message ({error.code}): {detail}"
+            ) from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            raise EmailSendError(
+                f"The Brevo response was uncertain: {error}",
+                outcome_unknown=True,
+            ) from error
+
+
+@dataclass(frozen=True)
 class SMTPEmailConfig:
     host: str
     port: int
@@ -121,6 +213,7 @@ class SMTPEmailClient:
         message.add_alternative(html_body, subtype="html")
 
         context = ssl.create_default_context()
+        submission_started = False
         try:
             if self.settings.security == "ssl":
                 server = smtplib.SMTP_SSL(
@@ -139,6 +232,7 @@ class SMTPEmailClient:
                     server.starttls(context=context)
                     server.ehlo()
                 server.login(self.settings.username, self.settings.password)
+                submission_started = True
                 server.send_message(message)
             return {"status_code": 250, "request_id": ""}
         except smtplib.SMTPAuthenticationError as error:
@@ -147,6 +241,10 @@ class SMTPEmailClient:
                 "password rather than the normal account password."
             ) from error
         except smtplib.SMTPServerDisconnected as error:
+            if not submission_started:
+                raise EmailSendError(
+                    f"The SMTP connection closed before sending: {error}"
+                ) from error
             raise EmailSendError(
                 f"The SMTP response was uncertain: {error}",
                 outcome_unknown=True,
@@ -156,6 +254,10 @@ class SMTPEmailClient:
                 f"The SMTP server rejected the message: {error}"
             ) from error
         except (OSError, TimeoutError) as error:
+            if not submission_started:
+                raise EmailSendError(
+                    f"Could not connect to the SMTP server: {error}"
+                ) from error
             raise EmailSendError(
                 f"The SMTP response was uncertain: {error}",
                 outcome_unknown=True,
@@ -308,21 +410,25 @@ class GraphEmailClient:
             ) from error
 
 
-def email_config() -> SMTPEmailConfig | GraphEmailConfig:
-    """Load the provider, defaulting to SMTP unless Graph is explicit."""
+def email_config() -> BrevoEmailConfig | SMTPEmailConfig | GraphEmailConfig:
+    """Load the explicitly selected provider, defaulting to Brevo on Render."""
     selected = os.getenv("EMAIL_PROVIDER", "").strip().lower()
     if not selected:
-        selected = "graph" if os.getenv("MS_GRAPH_TENANT_ID") else "smtp"
+        selected = "brevo" if os.getenv("RENDER") else "smtp"
     if selected == "graph":
         return GraphEmailConfig.from_env()
+    if selected == "brevo":
+        return BrevoEmailConfig.from_env()
     return SMTPEmailConfig.from_env()
 
 
 def build_email_client(
-    settings: SMTPEmailConfig | GraphEmailConfig,
+    settings: BrevoEmailConfig | SMTPEmailConfig | GraphEmailConfig,
 ) -> EmailClient:
     if isinstance(settings, GraphEmailConfig):
         return GraphEmailClient(settings)
+    if isinstance(settings, BrevoEmailConfig):
+        return BrevoEmailClient(settings)
     return SMTPEmailClient(settings)
 
 
