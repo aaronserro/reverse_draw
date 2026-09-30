@@ -1113,6 +1113,23 @@ def cancel_notification_batch():
         return _notification_preview(draw)
 
 
+@app.post("/api/admin/notifications/clear-history", dependencies=admin)
+def clear_notification_history():
+    with Mutation() as draw:
+        _expire_stale_batches(draw)
+        if any(_batch_is_active(batch) for batch in draw.notification_batches):
+            raise HTTPException(
+                status_code=409,
+                detail="Cancel the sending email batch before clearing history.",
+            )
+        cleared_batches = len(draw.notification_batches)
+        draw.notification_batches.clear()
+        return {
+            "cleared_batches": cleared_batches,
+            "preview": _notification_preview(draw),
+        }
+
+
 class ResolveUnknownIn(BaseModel):
     batch_id: str
     email: str

@@ -204,7 +204,46 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertEqual(settings.sender_name, "Fundraiser Draw")
         self.assertEqual(settings.password, "abcdefghijklmnop")
 
+
 class BatchProcessingTests(unittest.TestCase):
+    def test_clear_history_makes_current_tickets_pending_again(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previous_store = main.store
+            test_store = SQLiteStore(os.path.join(directory, "state.db"))
+            main.store = test_store
+            try:
+                draw = NotificationPreviewTests().make_draw()
+                draw.notification_batches = [
+                    {
+                        "id": "batch-1",
+                        "status": "completed",
+                        "jobs": [
+                            {
+                                "email": "jane@example.com",
+                                "status": "sent",
+                                "new_tickets": [1, 2],
+                            },
+                            {
+                                "email": "bob@example.com",
+                                "status": "sent",
+                                "new_tickets": [3],
+                            },
+                        ],
+                    }
+                ]
+                with test_store.transaction() as box:
+                    box.data = draw.to_dict()
+
+                result = main.clear_notification_history()
+
+                saved = ReverseDraw(test_store.read())
+                self.assertEqual(result["cleared_batches"], 1)
+                self.assertEqual(saved.notification_batches, [])
+                self.assertEqual(result["preview"]["pending_tickets"], 3)
+            finally:
+                test_store.close()
+                main.store = previous_store
+
     def test_successful_graph_response_is_persisted(self):
         class FakeClient:
             def send_ticket_email(self, **_message):

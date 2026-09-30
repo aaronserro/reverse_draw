@@ -351,6 +351,7 @@
   function renderNotifications(preview) {
     notificationPreview = preview;
     $("sendAllEmails").disabled = !preview.ready;
+    $("clearEmailHistory").disabled = preview.sending || preview.history.length === 0;
     $("cancelEmails").classList.toggle("hidden", !preview.sending);
     const statusClass = preview.ready ? "ok" : preview.blocked.length ? "err" : "warn";
     $("emailStatus").innerHTML =
@@ -445,6 +446,20 @@
   $("mergeHolders").onclick = () => saveHolders("merge");
 
   $("refreshEmails").onclick = loadNotifications;
+  $("clearEmailHistory").onclick = async () => {
+    const ok = await RD.confirm({
+      title: "Clear all email notification history?",
+      body: "Every currently assigned ticket will become pending again and can be emailed again. Ticket assignments and uploaded data will not be deleted. Use this only for testing or when you intentionally need to resend every ticket email.",
+      confirmText: "Clear email history",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      const result = await RD.api("/api/admin/notifications/clear-history", { method: "POST" });
+      renderNotifications(result.preview);
+      RD.toast(`Cleared ${RD.fmt(result.cleared_batches)} email batch(es). Current tickets can now be emailed again.`);
+    } catch (e) { RD.toast(e.message, true); }
+  };
   $("cancelEmails").onclick = async () => {
     const ok = await RD.confirm({
       title: "Cancel the sending batch?",
