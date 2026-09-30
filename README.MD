@@ -67,6 +67,52 @@ git push -u origin main
 
 After that, every push to `main` redeploys the site.
 
+## Microsoft 365 ticket emails
+
+The **Email tickets** admin tab reviews everyone with new ticket allocations and
+sends one private, personalized message per recipient. A successful
+`(email address, ticket number)` delivery is stored in the database, so uploading
+the same complete export again does not send duplicates. If a returning buyer
+gets more tickets, their next message highlights only the new tickets and also
+lists all of their current tickets.
+
+Sending is always manual: upload the complete spreadsheet, review and Save or
+Merge the allocation, open **Email tickets**, review the recipient list, and
+choose **Send all pending emails**.
+
+### Configure Microsoft Entra
+
+1. In the Microsoft Entra admin center, create an **App registration** for the
+  reverse draw.
+2. Under **API permissions**, add the Microsoft Graph **Application** permission
+  `Mail.Send`. Do not add a delegated permission.
+3. Grant tenant-wide admin consent for that permission.
+4. Under **Certificates & secrets**, create a client secret and copy its value
+  immediately.
+5. Use a real Microsoft 365 mailbox as the sender. For least privilege, an
+  Exchange administrator should create an application access policy (or an
+  Exchange Online application RBAC assignment) that limits this app to only
+  that mailbox.
+
+Add these environment variables in Render:
+
+- `MS_GRAPH_TENANT_ID`: the Entra directory/tenant ID.
+- `MS_GRAPH_CLIENT_ID`: the app registration's application/client ID.
+- `MS_GRAPH_CLIENT_SECRET`: the client secret value (not its secret ID).
+- `EMAIL_SENDER_ADDRESS`: the licensed/shared mailbox used in the From field.
+- `PUBLIC_APP_URL`: the public origin, such as
+  `https://reverse-draw-xxxx.onrender.com` (without a trailing slash).
+
+Redeploy after changing these values. Never commit the client secret or put it
+in `app/config.py`. The app requests an OAuth client-credentials token directly
+from Microsoft and calls Graph's `sendMail` endpoint; no mailbox password is
+stored.
+
+If Microsoft accepts a message, it is marked sent. A definite Graph rejection
+remains pending for a later retry. A network timeout after submission is marked
+**unknown** and is blocked from automatic retry to avoid a possible duplicate;
+verify the sender's Sent Items before resolving it.
+
 ### 4. Before the event
 - The free Render plan puts the app to sleep after 15 minutes without visitors, and the next visit waits while it wakes up. For the week of the draw, switch the service to the **Starter** plan in Render, then switch back afterwards.
 - Do a practice run: load the holders, run every round, then **Reset** (keep holders ticked).

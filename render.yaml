@@ -16,3 +16,13 @@ services:
         sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: MS_GRAPH_TENANT_ID
+        sync: false
+      - key: MS_GRAPH_CLIENT_ID
+        sync: false
+      - key: MS_GRAPH_CLIENT_SECRET
+        sync: false
+      - key: EMAIL_SENDER_ADDRESS
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false

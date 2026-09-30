@@ -2,6 +2,8 @@
   const $ = (id) => document.getElementById(id);
   let cfg, state;
   let csvDirty = false;
+  let notificationPreview = null;
+  let emailPoll = null;
 
   // ================================================================ views
   function show(view) {
@@ -16,6 +18,7 @@
       show("app");
       render();
       loadSourceDataframe();
+      loadNotifications();
     } catch (e) {
       if (e.status === 401) show("login");
       else RD.toast(e.message, true);
@@ -287,6 +290,7 @@
       csvDirty = true;
       renderUploadPreview(result, file.name);
       renderSourceDataframe(result.dataframe);
+      loadNotifications();
       RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
     } catch (e) {
       if (e.status === 401) show("login");
@@ -339,6 +343,61 @@
     }
   }
 
+  function ticketList(tickets) {
+    return tickets.map((ticket) => `#${ticket}`).join(", ");
+  }
+
+  function renderNotifications(preview) {
+    notificationPreview = preview;
+    $("sendAllEmails").disabled = !preview.ready;
+    const statusClass = preview.ready ? "ok" : preview.blocked.length ? "err" : "warn";
+    $("emailStatus").innerHTML =
+      `<div class="banner ${statusClass} email-status"><div><b>${RD.fmt(preview.pending_people)} pending recipient(s) · ` +
+      `${RD.fmt(preview.pending_tickets)} new ticket(s)</b>` +
+      `${preview.reason ? `<br>${RD.esc(preview.reason)}` : ""}` +
+      `${preview.missing_settings.length ? `<br><span class="small">Missing: ${preview.missing_settings.map(RD.esc).join(", ")}</span>` : ""}</div></div>`;
+
+    const rows = preview.recipients.map((person) =>
+      `<tr><td><b>${RD.esc(person.name)}</b><div class="small muted">${RD.esc(person.email)}</div></td>` +
+      `<td><span class="ticket-list new">${ticketList(person.new_tickets)}</span></td>` +
+      `<td class="small muted">${ticketList(person.all_tickets)}</td></tr>`).join("");
+    const blocked = preview.blocked.map((person) =>
+      `<tr class="blocked"><td><b>${RD.esc(person.name)}</b></td><td>${ticketList(person.tickets)}</td>` +
+      `<td>${RD.esc(person.reason)}</td></tr>`).join("");
+    $("emailRecipients").innerHTML =
+      `<div class="section-title">Send preview</div>` +
+      (rows ? `<div class="scroll"><table><tr><th>Recipient</th><th>New tickets</th><th>All current tickets</th></tr>${rows}</table></div>` : `<p class="muted">No recipients are currently pending.</p>`) +
+      (blocked ? `<div class="section-title">Blocked — not included</div><div class="scroll"><table><tr><th>Holder</th><th>Tickets</th><th>Reason</th></tr>${blocked}</table></div>` : "");
+
+    const history = preview.history.map((batch) => {
+      const sent = batch.jobs.filter((job) => job.status === "sent").length;
+      const issues = batch.jobs.length - sent;
+      const details = batch.jobs.filter((job) => job.status !== "sent").map((job) => {
+        const resolution = job.status === "unknown" ?
+          ` <span class="email-resolution"><button class="btn sm" data-email-resolution="delivered" data-batch="${encodeURIComponent(batch.id)}" data-email="${encodeURIComponent(job.email)}">Mark delivered</button>` +
+          `<button class="btn sm" data-email-resolution="retry" data-batch="${encodeURIComponent(batch.id)}" data-email="${encodeURIComponent(job.email)}">Allow retry</button></span>` : "";
+        return `<li><b>${RD.esc(job.name)}</b> · ${RD.esc(job.status)}${job.error ? ` — ${RD.esc(job.error)}` : ""}${resolution}</li>`;
+      }).join("");
+      return `<details class="round"><summary><span><b>${RD.esc(batch.status)}</b> <span class="muted">· ${sent}/${batch.jobs.length} sent${issues ? ` · ${issues} need attention` : ""}</span></span><span class="muted small">${RD.fmtTime(batch.created_at)}</span></summary>` +
+        `<div class="body small">${details ? `<ul class="email-errors">${details}</ul>` : "All messages were accepted by Microsoft Graph."}</div></details>`;
+    }).join("");
+    $("emailHistory").innerHTML = `<div class="section-title">Recent batches</div>${history || `<p class="muted">No email batches have been sent.</p>`}`;
+
+    clearTimeout(emailPoll);
+    if (preview.sending) {
+      emailPoll = setTimeout(loadNotifications, 2000);
+    }
+  }
+
+  async function loadNotifications() {
+    try {
+      renderNotifications(await RD.api("/api/admin/notifications/preview"));
+    } catch (e) {
+      if (e.status === 401) show("login");
+      else RD.toast(e.message, true);
+    }
+  }
+
   $("csvFile").addEventListener("change", (ev) => {
     const file = ev.target.files[0];
     if (file) uploadHolderFile(file);
@@ -370,7 +429,7 @@
   async function saveHolders(mode) {
     const ok = await act(() => RD.api("/api/admin/holders", { method: "PUT", body: { csv: $("holdersCsv").value, mode } }),
       (s) => `Saved ${RD.fmt(s.imported)} ticket holder(s)`);
-    if (ok) { csvDirty = false; $("holdersCsv").value = holdersToCsv(); }
+    if (ok) { csvDirty = false; $("holdersCsv").value = holdersToCsv(); loadNotifications(); }
   }
   $("saveHolders").onclick = async () => {
     const ok = await RD.confirm({
@@ -381,6 +440,53 @@
     if (ok) saveHolders("replace");
   };
   $("mergeHolders").onclick = () => saveHolders("merge");
+
+  $("refreshEmails").onclick = loadNotifications;
+  $("sendAllEmails").onclick = async () => {
+    if (!notificationPreview?.ready) return;
+    const ok = await RD.confirm({
+      title: `Email ${notificationPreview.pending_people} recipient(s)?`,
+      body: `${notificationPreview.pending_tickets} new ticket(s) will be sent as separate personalized Microsoft 365 messages. Review the list before continuing.`,
+      confirmText: "Send all emails",
+    });
+    if (!ok) return;
+    $("sendAllEmails").disabled = true;
+    try {
+      const result = await RD.api("/api/admin/notifications/send-all", { method: "POST" });
+      renderNotifications(result.preview);
+      RD.toast(`Email batch started for ${RD.fmt(result.batch.jobs.length)} recipient(s).`);
+    } catch (e) {
+      RD.toast(e.message, true);
+      loadNotifications();
+    }
+  };
+
+  $("emailHistory").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-email-resolution]");
+    if (!button) return;
+    const delivered = button.dataset.emailResolution === "delivered";
+    const ok = await RD.confirm({
+      title: delivered ? "Mark this email delivered?" : "Allow this email to retry?",
+      body: delivered
+        ? "Only do this after confirming the message appears in the sender mailbox or reached the recipient. Its tickets will count as emailed."
+        : "Only do this after confirming the message was not delivered. It will return to the next Send all pending batch.",
+      confirmText: delivered ? "Mark delivered" : "Allow retry",
+      danger: !delivered,
+    });
+    if (!ok) return;
+    try {
+      const preview = await RD.api("/api/admin/notifications/resolve-unknown", {
+        method: "POST",
+        body: {
+          batch_id: decodeURIComponent(button.dataset.batch),
+          email: decodeURIComponent(button.dataset.email),
+          delivered,
+        },
+      });
+      renderNotifications(preview);
+      RD.toast(delivered ? "Email marked delivered." : "Email cleared for retry.");
+    } catch (e) { RD.toast(e.message, true); }
+  });
 
   $("assignBlock").onclick = async () => {
     const start = Number($("blockStart").value);

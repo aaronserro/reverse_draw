@@ -76,6 +76,12 @@ class ReverseDraw:
         # It is kept separately from ticket owners so later workflows can use
         # fields such as email without changing draw allocation behavior.
         self.source_dataframe: dict | None = data.get("source_dataframe")
+        self.allocation_source_fingerprint: str = str(
+            data.get("allocation_source_fingerprint") or ""
+        )
+        self.notification_batches: list[dict] = list(
+            data.get("notification_batches") or []
+        )
         self.eliminated_in: dict[int, int] = {}
         self.set_owners({int(k): v for k, v in (data.get("owners") or {}).items()})
         for rec in rounds:
@@ -89,6 +95,8 @@ class ReverseDraw:
             "rounds": self.rounds,
             "undone": self.undone,
             "source_dataframe": self.source_dataframe,
+            "allocation_source_fingerprint": self.allocation_source_fingerprint,
+            "notification_batches": self.notification_batches,
         }
 
     # ---- queries ------------------------------------------------------------
@@ -182,6 +190,8 @@ class ReverseDraw:
         if not keep_owners:
             self.owners.clear()
             self.source_dataframe = None
+            self.allocation_source_fingerprint = ""
+            self.notification_batches.clear()
 
     def set_owners(self, mapping: dict[int, str]) -> None:
         clean: dict[int, str] = {}

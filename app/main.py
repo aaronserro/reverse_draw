@@ -21,11 +21,13 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,6 +42,7 @@ except ImportError:
 from . import config
 from .db import make_store
 from .draw import DrawError, ReverseDraw, current_schedule, now_iso
+from .email_service import EmailSendError, GraphEmailClient, GraphEmailConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("reverse_draw")
@@ -430,6 +433,9 @@ def put_holders(body: HoldersIn):
         with Mutation() as d:
             mapping = d.parse_owner_csv(body.csv)
             d.set_owners(mapping if body.mode == "replace" else {**d.owners, **mapping})
+            d.allocation_source_fingerprint = _source_fingerprint(
+                d.source_dataframe
+            )
             out = admin_payload(d)
             out["imported"] = len(mapping)
             return out
@@ -677,6 +683,239 @@ def _stored_dataframe(record: dict | None) -> tuple[pd.DataFrame, dict] | None:
     return frame, record
 
 
+def _source_fingerprint(record: dict | None) -> str:
+    """Stable identity for the complete uploaded source sheet."""
+    if not record or not record.get("json"):
+        return ""
+    return str(
+        record.get("fingerprint")
+        or hashlib.sha256(str(record["json"]).encode()).hexdigest()
+    )
+
+
+def _allocation_fingerprint(owners: dict[int, str]) -> str:
+    canonical = json.dumps(
+        [[ticket, owners[ticket]] for ticket in sorted(owners)],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _person_key(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
+def _email_key(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+EMAIL_HEADERS = (
+    "hoopp email address",
+    "email address",
+    "email",
+    "e-mail address",
+    "e-mail",
+)
+
+
+def _source_people(frame: pd.DataFrame) -> dict[str, dict]:
+    """Resolve normalized source names to their distinct source emails."""
+    columns = [(_column_key(column), column) for column in frame.columns]
+    name_column = _pick_column(columns, NAME_HEADERS, contains=("name",))
+    email_column = _pick_column(columns, EMAIL_HEADERS, contains=("email",))
+    if name_column is None or email_column is None:
+        return {}
+
+    people: dict[str, dict] = {}
+    for _, row in frame.iterrows():
+        name = str(row[name_column] or "").strip()
+        key = _person_key(name)
+        if not key:
+            continue
+        person = people.setdefault(key, {"name": name, "emails": set()})
+        email = _email_key(row[email_column])
+        if email and EMAIL_PATTERN.fullmatch(email):
+            person["emails"].add(email)
+    return people
+
+
+def _successful_delivery_pairs(draw: ReverseDraw) -> set[tuple[str, int]]:
+    return {
+        (_email_key(job.get("email")), int(ticket))
+        for batch in draw.notification_batches
+        for job in batch.get("jobs", [])
+        if job.get("status") == "sent"
+        for ticket in job.get("new_tickets", [])
+    }
+
+
+def _unknown_delivery_pairs(draw: ReverseDraw) -> set[tuple[str, int]]:
+    return {
+        (_email_key(job.get("email")), int(ticket))
+        for batch in draw.notification_batches
+        for job in batch.get("jobs", [])
+        if job.get("status") == "unknown"
+        for ticket in job.get("new_tickets", [])
+    }
+
+
+def _batch_is_active(batch: dict) -> bool:
+    if batch.get("status") != "sending":
+        return False
+    try:
+        created_at = datetime.fromisoformat(str(batch["created_at"]))
+        age = datetime.now(timezone.utc) - created_at
+        return age.total_seconds() < 30 * 60
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _expire_stale_batches(draw: ReverseDraw) -> None:
+    for batch in draw.notification_batches:
+        if batch.get("status") != "sending" or _batch_is_active(batch):
+            continue
+        for job in batch.get("jobs", []):
+            if job.get("status") == "pending":
+                job.update(
+                    status="failed",
+                    error="The email worker stopped before this message was sent.",
+                )
+        batch["status"] = "attention"
+        batch["completed_at"] = now_iso()
+
+
+def _notification_preview(draw: ReverseDraw) -> dict:
+    """Pure current-state view of recipients with tickets not yet delivered."""
+    settings = GraphEmailConfig.from_env()
+    current_source = _source_fingerprint(draw.source_dataframe)
+    source_matches = bool(current_source) and (
+        current_source == draw.allocation_source_fingerprint
+    )
+    result = {
+        "configured": settings.configured,
+        "missing_settings": settings.missing,
+        "source_matches_allocation": source_matches,
+        "allocation_fingerprint": _allocation_fingerprint(draw.owners),
+        "recipients": [],
+        "blocked": [],
+        "pending_people": 0,
+        "pending_tickets": 0,
+        "history": list(reversed(draw.notification_batches[-10:])),
+    }
+    if not draw.owners:
+        result["ready"] = False
+        result["reason"] = "Save ticket holders before sending email."
+        return result
+    if not source_matches:
+        result["ready"] = False
+        result["reason"] = (
+            "The saved ticket allocation does not match the latest uploaded "
+            "source sheet. Review it, then Save or Merge the holders."
+        )
+        return result
+
+    stored = _stored_dataframe(draw.source_dataframe)
+    if stored is None:
+        result["ready"] = False
+        result["reason"] = "Upload a source spreadsheet containing email addresses."
+        return result
+    source_people = _source_people(stored[0])
+    tickets_by_person: dict[str, dict] = {}
+    for ticket, holder in sorted(draw.owners.items()):
+        key = _person_key(holder)
+        person = tickets_by_person.setdefault(
+            key, {"name": holder, "tickets": []}
+        )
+        person["tickets"].append(ticket)
+
+    deliveries = _successful_delivery_pairs(draw)
+    unknown_deliveries = _unknown_delivery_pairs(draw)
+    recipients_by_email: dict[str, dict] = {}
+    for key, allocation in tickets_by_person.items():
+        source_person = source_people.get(key)
+        emails = source_person["emails"] if source_person else set()
+        if len(emails) != 1:
+            result["blocked"].append(
+                {
+                    "name": allocation["name"],
+                    "tickets": allocation["tickets"],
+                    "reason": (
+                        "No valid email found in the source sheet."
+                        if not emails
+                        else "Conflicting email addresses found in the source sheet."
+                    ),
+                }
+            )
+            continue
+        email = next(iter(emails))
+        recipient = recipients_by_email.setdefault(
+            email,
+            {"email": email, "name": allocation["name"], "all_tickets": []},
+        )
+        recipient["all_tickets"].extend(allocation["tickets"])
+
+    for recipient in recipients_by_email.values():
+        recipient["all_tickets"] = sorted(set(recipient["all_tickets"]))
+        uncertain = [
+            ticket
+            for ticket in recipient["all_tickets"]
+            if (recipient["email"], ticket) in unknown_deliveries
+        ]
+        if uncertain:
+            result["blocked"].append(
+                {
+                    "name": recipient["name"],
+                    "tickets": uncertain,
+                    "reason": (
+                        "Microsoft Graph returned an uncertain result for these "
+                        "tickets. Verify delivery before trying again."
+                    ),
+                }
+            )
+            continue
+        recipient["new_tickets"] = [
+            ticket
+            for ticket in recipient["all_tickets"]
+            if (recipient["email"], ticket) not in deliveries
+        ]
+        if recipient["new_tickets"]:
+            result["recipients"].append(recipient)
+
+    result["recipients"].sort(key=lambda item: item["name"].casefold())
+    result["pending_people"] = len(result["recipients"])
+    result["pending_tickets"] = sum(
+        len(item["new_tickets"]) for item in result["recipients"]
+    )
+    result["ready"] = bool(
+        settings.configured
+        and result["recipients"]
+        and not result["blocked"]
+    )
+    active_batch = next(
+        (
+            batch
+            for batch in reversed(draw.notification_batches)
+            if _batch_is_active(batch)
+        ),
+        None,
+    )
+    if active_batch:
+        result["ready"] = False
+        result["reason"] = "An email batch is currently sending."
+    elif result["blocked"]:
+        result["reason"] = "Fix the blocked recipients before sending."
+    elif not settings.configured:
+        result["reason"] = "Microsoft Graph email settings are incomplete."
+    elif not result["recipients"]:
+        result["reason"] = "Everyone's current tickets have already been emailed."
+    else:
+        result["reason"] = ""
+    result["sending"] = bool(active_batch)
+    return result
+
+
 @app.get("/api/admin/holders/dataframe", dependencies=admin)
 def get_holder_dataframe():
     stored = _stored_dataframe(load().source_dataframe)
@@ -715,6 +954,9 @@ async def preview_holder_file(request: Request, filename: str):
                 "uploaded_at": now_iso(),
                 "json": source.to_json(orient="split", date_format="iso"),
             }
+            draw.source_dataframe["fingerprint"] = _source_fingerprint(
+                draw.source_dataframe
+            )
             dataframe = _dataframe_payload(source, draw.source_dataframe)
         # Per-person preview so the admin can check the allocation before saving.
         people = holders.groupby("name", sort=True)["ticket"].agg(list)
@@ -736,6 +978,149 @@ async def preview_holder_file(request: Request, filename: str):
                 "unprotected Excel file."
             )
         )
+
+
+@app.get("/api/admin/notifications/preview", dependencies=admin)
+def preview_notifications():
+    return _notification_preview(load())
+
+
+def _process_notification_batch(batch_id: str, recipients: list[dict]) -> None:
+    """Deliver one claimed batch and durably record every result."""
+    client = GraphEmailClient(GraphEmailConfig.from_env())
+    for recipient in recipients:
+        job_status = "sent"
+        sent_at = ""
+        error_message = ""
+        request_id = ""
+        try:
+            response = client.send_ticket_email(
+                recipient=recipient["email"],
+                name=recipient["name"],
+                new_tickets=recipient["new_tickets"],
+                all_tickets=recipient["all_tickets"],
+            )
+            sent_at = now_iso()
+            request_id = response.get("request_id", "")
+        except EmailSendError as error:
+            job_status = "unknown" if error.outcome_unknown else "failed"
+            error_message = str(error)[:1000]
+            log.error("Ticket email to %s failed: %s", recipient["email"], error)
+        except Exception as error:
+            job_status = "failed"
+            error_message = f"Unexpected email provider error: {error}"[:1000]
+            log.exception("Unexpected ticket email failure for %s", recipient["email"])
+
+        with Mutation() as draw:
+            batch = next(
+                item for item in draw.notification_batches if item["id"] == batch_id
+            )
+            job = next(
+                item for item in batch["jobs"]
+                if item["email"] == recipient["email"]
+            )
+            job.update(
+                status=job_status,
+                sent_at=sent_at,
+                error=error_message,
+                provider_request_id=request_id,
+            )
+
+    with Mutation() as draw:
+        batch = next(
+            item for item in draw.notification_batches if item["id"] == batch_id
+        )
+        statuses = {job["status"] for job in batch["jobs"]}
+        batch["status"] = "completed" if statuses == {"sent"} else "attention"
+        batch["completed_at"] = now_iso()
+
+
+@app.post("/api/admin/notifications/send-all", dependencies=admin)
+def send_all_notifications(background_tasks: BackgroundTasks):
+    batch_id = uuid.uuid4().hex
+    with Mutation() as draw:
+        _expire_stale_batches(draw)
+        if any(
+            _batch_is_active(batch)
+            for batch in draw.notification_batches
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Another email batch is already sending.",
+            )
+        preview = _notification_preview(draw)
+        if not preview["ready"]:
+            raise HTTPException(status_code=409, detail=preview["reason"])
+        batch = {
+            "id": batch_id,
+            "created_at": now_iso(),
+            "completed_at": "",
+            "status": "sending",
+            "allocation_fingerprint": preview["allocation_fingerprint"],
+            "jobs": [
+                {
+                    **recipient,
+                    "status": "pending",
+                    "sent_at": "",
+                    "error": "",
+                    "provider_request_id": "",
+                }
+                for recipient in preview["recipients"]
+            ],
+        }
+        draw.notification_batches.append(batch)
+    background_tasks.add_task(
+        _process_notification_batch, batch_id, preview["recipients"]
+    )
+    return {"batch": batch, "preview": _notification_preview(load())}
+
+
+class ResolveUnknownIn(BaseModel):
+    batch_id: str
+    email: str
+    delivered: bool
+
+
+@app.post("/api/admin/notifications/resolve-unknown", dependencies=admin)
+def resolve_unknown_notification(body: ResolveUnknownIn):
+    with Mutation() as draw:
+        batch = next(
+            (
+                item
+                for item in draw.notification_batches
+                if item.get("id") == body.batch_id
+            ),
+            None,
+        )
+        if batch is None:
+            raise HTTPException(status_code=404, detail="Email batch not found.")
+        job = next(
+            (
+                item
+                for item in batch.get("jobs", [])
+                if _email_key(item.get("email")) == _email_key(body.email)
+            ),
+            None,
+        )
+        if job is None or job.get("status") != "unknown":
+            raise HTTPException(
+                status_code=409,
+                detail="That email no longer has an unknown delivery result.",
+            )
+        if body.delivered:
+            job.update(
+                status="sent",
+                sent_at=now_iso(),
+                error="Manually marked delivered after checking Microsoft 365.",
+            )
+        else:
+            job.update(
+                status="failed",
+                error="Manually cleared for retry after checking Microsoft 365.",
+            )
+        statuses = {item["status"] for item in batch["jobs"]}
+        batch["status"] = "completed" if statuses == {"sent"} else "attention"
+        return _notification_preview(draw)
 
 
 class BlockIn(BaseModel):
