@@ -62,12 +62,42 @@ def validate_schedule(s: dict) -> None:
         prev = n
 
 
+def compatible_schedule(
+    rounds: list[dict], stored: dict, current: dict
+) -> bool:
+    """Return whether config can safely replace the remaining stored rounds."""
+    if current["total"] != stored["total"]:
+        return False
+    if len(current["survivors"]) < len(rounds):
+        return False
+    return all(
+        int(rec["survivors"]) == current["survivors"][index]
+        for index, rec in enumerate(rounds)
+    )
+
+
 class ReverseDraw:
     def __init__(self, data: dict | None = None) -> None:
         data = data or {}
         rounds = data.get("rounds") or []
-        # The schedule is frozen once the draw has started; before that it follows config.py.
-        self.schedule = data["schedule"] if rounds and data.get("schedule") else current_schedule()
+        configured_schedule = current_schedule()
+        stored_schedule = data.get("schedule") or configured_schedule
+        self.schedule_pending = False
+        if rounds and not compatible_schedule(
+            rounds, stored_schedule, configured_schedule
+        ):
+            # Completed targets cannot be rewritten safely. Keep the audited
+            # schedule until reset, but expose the mismatch to the admin.
+            self.schedule = stored_schedule
+            self.schedule_pending = stored_schedule != configured_schedule
+        else:
+            # Completed targets still match, so config may freely change any
+            # future targets or append/remove future rounds. Preserve completed
+            # labels because they are part of the historical audit record.
+            labels = list(configured_schedule["labels"])
+            for index, rec in enumerate(rounds):
+                labels[index] = str(rec["label"])
+            self.schedule = {**configured_schedule, "labels": labels}
         validate_schedule(self.schedule)
         self.owners: dict[int, str] = {}
         self.rounds: list[dict] = []

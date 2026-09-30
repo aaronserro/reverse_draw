@@ -39,7 +39,10 @@ The code people type to see the board is `PUBLIC_ACCESS_CODE` in `app/config.py`
 
 ## Change the settings
 
-Edit `app/config.py`, then commit and push. Render redeploys automatically. Once Round 1 has run, the round schedule is locked for that draw, and new round settings only apply after an admin resets the draw.
+Edit `app/config.py`, then commit and push. Render redeploys automatically.
+Future rounds update dynamically when every completed round still has the same
+survivor target. Completed results remain frozen for audit safety; changing a
+completed target requires an admin reset.
 
 ## Deploy (GitHub + Supabase + Render)
 

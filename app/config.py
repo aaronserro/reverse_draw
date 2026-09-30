@@ -20,13 +20,13 @@ TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
 
 # Tickets still in after each round. Must be strictly decreasing.
 # The last number is how many winners there are (usually 1).
-ROUND_SURVIVORS = [500, 301, 102, 89, 3]
+ROUND_SURVIVORS = [500, 301, 102, 89, 13]
 
 # One label per round (same length as ROUND_SURVIVORS).
 ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Round 4", "Grand Prize"]
 
-# Note: once Round 1 has run, the schedule is frozen for that draw.
-# Changes here take effect after an admin resets the draw.
+# Completed round targets are frozen for audit safety. Future targets and labels
+# update dynamically when the completed targets still match; otherwise reset.
 
 # None = a fresh cryptographically random seed each round (logged for audit).
 # Set an int only for testing - it makes every draw predictable.

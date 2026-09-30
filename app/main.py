@@ -154,7 +154,7 @@ def admin_payload(d: ReverseDraw) -> dict:
         summary=d.holder_summary(),
         storage=store.kind,
         warn_no_db=ON_RENDER and store.kind == "sqlite",
-        schedule_pending=d.started and d.schedule != current_schedule(),
+        schedule_pending=d.schedule_pending,
         public_code_set=bool(PUBLIC_CODE),
     )
     return out

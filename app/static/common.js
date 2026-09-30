@@ -113,8 +113,9 @@ RD.announcement = function (cfg, state) {
     const one = who.length === 1;
     return {
       eyebrow: `Draw complete · ${s.labels[nRounds - 1]}`,
-      headline: "We have a winner!",
-      text: `Congratulations to ${one ? "ticket" : "tickets"} ${who.join(", ")}, who ${one ? "takes" : "take"} home ${cfg.prize_text}!`,
+      headline: one ? "We have a winner!" : `We have ${RD.fmt(who.length)} winners!`,
+      text: `Congratulations to winning ${one ? "ticket" : "tickets"} ${who.join(", ")}! ` +
+        `${one ? "It is" : "They are"} the ${one ? "final ticket" : "final tickets"} remaining for ${cfg.prize_text}.`,
     };
   }
   const last = state.rounds[state.rounds.length - 1];

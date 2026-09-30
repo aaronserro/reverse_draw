@@ -101,12 +101,19 @@
 
   function renderHowItWorks() {
     const s = cfg.schedule;
+    const finalCount = s.survivors[s.survivors.length - 1];
+    const finalLabel = s.labels[s.labels.length - 1];
     $("how1").textContent =
       `All ${RD.fmt(s.total)} tickets are in the running for ${cfg.prize_text}. Nobody has to do anything to stay in.`;
     $("how2").textContent =
       `Across ${s.labels.length} rounds the board is cut down: ` +
       `${RD.fmt(s.total)} → ${s.survivors.map(RD.fmt).join(" → ")}. Green squares are still in.`;
-    $("how3").textContent = `The last ticket standing wins ${cfg.prize_text}. ${cfg.closing_note}`;
+    $("how3Title").textContent = finalCount === 1
+      ? "One winning ticket remains"
+      : `${RD.fmt(finalCount)} winning tickets remain`;
+    $("how3").textContent =
+      `${finalLabel} leaves ${RD.fmt(finalCount)} ${finalCount === 1 ? "winner" : "winners"} ` +
+      `for ${cfg.prize_text}. ${cfg.closing_note}`;
   }
 
   // ================================================================ board page
@@ -129,7 +136,7 @@
       const s = RD.ticketStatus(state, t);
       const who = state.holders && state.holders[t] ? ` · ${RD.esc(state.holders[t])}` : "";
       if (s.cls === "win")
-        return `<div class="res win"><div class="res-icon">★</div><div><div class="res-title">Ticket #${t} is the winner!</div><div class="res-sub">Congratulations${who}</div></div></div>`;
+        return `<div class="res win"><div class="res-icon">★</div><div><div class="res-title">Ticket #${t} is a winner!</div><div class="res-sub">Congratulations${who}</div></div></div>`;
       if (s.cls === "in") {
         const next = state.next_label ? `Next up: ${RD.esc(state.next_label)}` : "";
         return `<div class="res in"><div class="res-icon">✓</div><div><div class="res-title">Ticket #${t} is still in!</div><div class="res-sub">${next}${who}</div></div></div>`;
@@ -192,7 +199,10 @@
           fresh = new Set();
           s.status.forEach((r, i) => { if (r === s.rounds_done) fresh.add(i + 1); });
           const last = s.rounds[s.rounds.length - 1];
-          RD.toast(s.finished ? "The winner has been drawn!" : `${last.label} results are in: ${RD.fmt(last.survivors)} tickets left`);
+          const winnerCount = s.winners.length;
+          RD.toast(s.finished
+            ? `${RD.fmt(winnerCount)} ${winnerCount === 1 ? "winner has" : "winners have"} been drawn!`
+            : `${last.label} results are in: ${RD.fmt(last.survivors)} tickets left`);
         }
         state = s;
         render(fresh);
