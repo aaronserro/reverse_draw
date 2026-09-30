@@ -67,7 +67,7 @@ git push -u origin main
 
 After that, every push to `main` redeploys the site.
 
-## Microsoft 365 ticket emails
+## Ticket emails with free Gmail SMTP
 
 The **Email tickets** admin tab reviews everyone with new ticket allocations and
 sends one private, personalized message per recipient. A successful
@@ -80,38 +80,71 @@ Sending is always manual: upload the complete spreadsheet, review and Save or
 Merge the allocation, open **Email tickets**, review the recipient list, and
 choose **Send all pending emails**.
 
-### Configure Microsoft Entra
+No Microsoft tenant or paid email service is required. A normal Gmail account
+can send through Gmail SMTP at no additional charge. For this event's roughly
+80 recipient addresses, Gmail's normal personal-account daily sending limit is
+sufficient. Google can change its limits and anti-spam policies, so send a test
+message before the event.
 
-1. In the Microsoft Entra admin center, create an **App registration** for the
-  reverse draw.
-2. Under **API permissions**, add the Microsoft Graph **Application** permission
-  `Mail.Send`. Do not add a delegated permission.
-3. Grant tenant-wide admin consent for that permission.
-4. Under **Certificates & secrets**, create a client secret and copy its value
-  immediately.
-5. Use a real Microsoft 365 mailbox as the sender. For least privilege, an
-  Exchange administrator should create an application access policy (or an
-  Exchange Online application RBAC assignment) that limits this app to only
-  that mailbox.
+### 1. Create a Gmail app password
 
-Add these environment variables in Render:
+1. Choose the Gmail account that will send the messages.
+2. Turn on **2-Step Verification** for that Google account.
+3. Open the Google Account **App passwords** page.
+4. Create an app password named `Reverse Draw`.
+5. Copy the generated 16-character password. This is `SMTP_PASSWORD`; do not
+  use the account's normal Google password.
 
-- `MS_GRAPH_TENANT_ID`: the Entra directory/tenant ID.
-- `MS_GRAPH_CLIENT_ID`: the app registration's application/client ID.
-- `MS_GRAPH_CLIENT_SECRET`: the client secret value (not its secret ID).
-- `EMAIL_SENDER_ADDRESS`: the licensed/shared mailbox used in the From field.
-- `PUBLIC_APP_URL`: the public origin, such as
-  `https://reverse-draw-xxxx.onrender.com` (without a trailing slash).
+### 2. Set the environment variables
 
-Redeploy after changing these values. Never commit the client secret or put it
-in `app/config.py`. The app requests an OAuth client-credentials token directly
-from Microsoft and calls Graph's `sendMail` endpoint; no mailbox password is
-stored.
+Use these exact names and values (replace the example account, password, name,
+and URL):
 
-If Microsoft accepts a message, it is marked sent. A definite Graph rejection
-remains pending for a later retry. A network timeout after submission is marked
-**unknown** and is blocked from automatic retry to avoid a possible duplicate;
-verify the sender's Sent Items before resolving it.
+```dotenv
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USERNAME=your.sender.account@gmail.com
+SMTP_PASSWORD=the-16-character-google-app-password
+EMAIL_SENDER_ADDRESS=your.sender.account@gmail.com
+EMAIL_SENDER_NAME=United Way Reverse Draw
+PUBLIC_APP_URL=https://reverse-draw-xxxx.onrender.com
+```
+
+- `EMAIL_PROVIDER`: exactly `smtp`.
+- `SMTP_HOST`: exactly `smtp.gmail.com` for Gmail.
+- `SMTP_PORT`: exactly `587` when using `starttls`.
+- `SMTP_SECURITY`: exactly `starttls`.
+- `SMTP_USERNAME`: the full Gmail address used to sign in.
+- `SMTP_PASSWORD`: the Google app password, with spaces removed.
+- `EMAIL_SENDER_ADDRESS`: the address recipients see in **From**. Use the same
+  address as `SMTP_USERNAME`, unless Gmail has already verified another Send As
+  alias for this account. It falls back to `SMTP_USERNAME` if omitted.
+- `EMAIL_SENDER_NAME`: the changeable display name recipients see, such as
+  `United Way Reverse Draw`. It can be changed without changing credentials.
+- `PUBLIC_APP_URL`: the deployed site's full `https://` origin, with no trailing
+  slash and no `/admin` path.
+
+For local development, store these lines in `.env` in the project root. That
+file is excluded by `.gitignore` and must never be committed. Restart Uvicorn
+after changing it.
+
+For production, open the Render dashboard, select the web service, then open
+**Environment** and add the same keys there. Render stores the secret values;
+they do not belong in `app/config.py`, GitHub, or `render.yaml`. Save the changes
+and let Render redeploy. To change the sender later, update
+`EMAIL_SENDER_ADDRESS` and `EMAIL_SENDER_NAME` in Render and redeploy. Gmail will
+not permit an arbitrary unverified From address.
+
+A definite SMTP rejection remains pending for a later retry. A network timeout
+after submission is marked **unknown** and blocked from automatic retry to avoid
+a duplicate; check the Gmail Sent folder, then use **Mark delivered** or
+**Allow retry** in the email batch history.
+
+Microsoft Graph remains supported for existing deployments by setting
+`EMAIL_PROVIDER=graph` together with `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`,
+`MS_GRAPH_CLIENT_SECRET`, `EMAIL_SENDER_ADDRESS`, and `PUBLIC_APP_URL`.
 
 ### 4. Before the event
 - The free Render plan puts the app to sleep after 15 minutes without visitors, and the next visit waits while it wakes up. For the week of the draw, switch the service to the **Starter** plan in Render, then switch back afterwards.
