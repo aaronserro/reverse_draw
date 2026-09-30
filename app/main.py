@@ -39,7 +39,7 @@ except ImportError:
 
 from . import config
 from .db import make_store
-from .draw import DrawError, ReverseDraw, current_schedule
+from .draw import DrawError, ReverseDraw, current_schedule, now_iso
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("reverse_draw")
@@ -634,6 +634,13 @@ def _uploaded_holders_dataframe(
 ) -> pd.DataFrame:
     """Return a validated ticket/name DataFrame for any supported upload."""
     source = _read_upload_dataframe(data, filename)
+    return _holders_from_dataframe(source, total)
+
+
+def _holders_from_dataframe(
+    source: pd.DataFrame, total: int
+) -> pd.DataFrame:
+    """Build ticket assignments without modifying the source DataFrame."""
     holders = _assignment_dataframe(source)
     if holders is None:
         holders = _order_dataframe(source, total)
@@ -647,6 +654,36 @@ def _uploaded_holders_dataframe(
         holders["ticket"].between(1, total) & holders["name"].ne("")
     ]
     return holders.drop_duplicates("ticket", keep="last").sort_values("ticket")
+
+
+def _dataframe_payload(frame: pd.DataFrame, metadata: dict) -> dict:
+    """Return the complete DataFrame as JSON-safe browser table data."""
+    split = json.loads(frame.to_json(orient="split", date_format="iso"))
+    return {
+        "filename": metadata.get("filename", "Uploaded data"),
+        "uploaded_at": metadata.get("uploaded_at", ""),
+        "columns": [str(column) for column in split["columns"]],
+        "rows": split["data"],
+        "row_count": len(split["data"]),
+        "column_count": len(split["columns"]),
+    }
+
+
+def _stored_dataframe(record: dict | None) -> tuple[pd.DataFrame, dict] | None:
+    """Reconstruct the persisted DataFrame and its metadata."""
+    if not record or not record.get("json"):
+        return None
+    frame = pd.read_json(io.StringIO(record["json"]), orient="split")
+    return frame, record
+
+
+@app.get("/api/admin/holders/dataframe", dependencies=admin)
+def get_holder_dataframe():
+    stored = _stored_dataframe(load().source_dataframe)
+    if stored is None:
+        return {"dataframe": None}
+    frame, metadata = stored
+    return {"dataframe": _dataframe_payload(frame, metadata)}
 
 
 @app.post("/api/admin/holders/file", dependencies=admin)
@@ -670,13 +707,21 @@ async def preview_holder_file(request: Request, filename: str):
         bad_request(DrawError("The selected file is empty."))
 
     try:
-        draw = load()
-        holders = _uploaded_holders_dataframe(data, filename, draw.total)
+        source = _read_upload_dataframe(data, filename)
+        with Mutation() as draw:
+            holders = _holders_from_dataframe(source, draw.total)
+            draw.source_dataframe = {
+                "filename": Path(filename).name,
+                "uploaded_at": now_iso(),
+                "json": source.to_json(orient="split", date_format="iso"),
+            }
+            dataframe = _dataframe_payload(source, draw.source_dataframe)
         # Per-person preview so the admin can check the allocation before saving.
         people = holders.groupby("name", sort=True)["ticket"].agg(list)
         return {
             "csv": holders.to_csv(index=False),
             "imported": len(holders),
+            "dataframe": dataframe,
             "people": [
                 {"name": name, "tickets": tickets} for name, tickets in people.items()
             ],

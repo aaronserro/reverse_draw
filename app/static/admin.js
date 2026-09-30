@@ -15,6 +15,7 @@
       state = await RD.api("/api/admin/state");
       show("app");
       render();
+      loadSourceDataframe();
     } catch (e) {
       if (e.status === 401) show("login");
       else RD.toast(e.message, true);
@@ -285,6 +286,7 @@
       if (!result.imported) throw new Error("No valid ticket holders were found in the uploaded data.");
       csvDirty = true;
       renderUploadPreview(result, file.name);
+      renderSourceDataframe(result.dataframe);
       RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
     } catch (e) {
       if (e.status === 401) show("login");
@@ -307,6 +309,34 @@
       `sorted by holder. Use Save or Merge above to apply it.</p>` +
       `<div class="scroll" style="max-height:260px"><table>` +
       `<tr><th>Holder</th><th class="r">Tickets</th><th>Ticket numbers</th></tr>${rows}</table></div>`;
+  }
+
+  function renderSourceDataframe(dataframe) {
+    const container = $("sourceDataframe");
+    if (!dataframe) {
+      container.innerHTML = "";
+      return;
+    }
+    const head = dataframe.columns.map((column) =>
+      `<th>${RD.esc(column)}</th>`).join("");
+    const body = dataframe.rows.map((row) =>
+      `<tr>${row.map((value) => `<td>${RD.esc(value ?? "")}</td>`).join("")}</tr>`
+    ).join("");
+    container.innerHTML =
+      `<div class="section-title">Saved source DataFrame</div>` +
+      `<p class="hint"><b>${RD.esc(dataframe.filename)}</b> · ${RD.fmt(dataframe.row_count)} rows × ` +
+      `${RD.fmt(dataframe.column_count)} columns. This is the complete uploaded sheet and is stored separately from ticket allocation.</p>` +
+      `<div class="scroll dataframe-scroll"><table class="dataframe-table">` +
+      `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  async function loadSourceDataframe() {
+    try {
+      const result = await RD.api("/api/admin/holders/dataframe");
+      renderSourceDataframe(result.dataframe);
+    } catch (e) {
+      if (e.status !== 401) console.warn("Could not load source DataFrame", e);
+    }
   }
 
   $("csvFile").addEventListener("change", (ev) => {

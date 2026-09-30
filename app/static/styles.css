@@ -413,6 +413,13 @@ details.round.undone { opacity: .75; border-style: dashed; }
 .hint { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
 code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-3); padding: 1px 6px; border-radius: 5px; }
 .file-btn input { display: none; }
+.dataframe-scroll { max-height: 520px; margin-top: 10px; }
+.dataframe-table { width: max-content; min-width: 100%; }
+.dataframe-table th, .dataframe-table td {
+  min-width: 130px; max-width: 320px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dataframe-table th { z-index: 1; }
 /* Shown while a workbook is dragged over the page. */
 .dropping { position: relative; }
 .dropping::after {

@@ -72,6 +72,10 @@ class ReverseDraw:
         self.owners: dict[int, str] = {}
         self.rounds: list[dict] = []
         self.undone: list[dict] = list(data.get("undone") or [])
+        # Serialized pandas split-orient JSON for the original admin upload.
+        # It is kept separately from ticket owners so later workflows can use
+        # fields such as email without changing draw allocation behavior.
+        self.source_dataframe: dict | None = data.get("source_dataframe")
         self.eliminated_in: dict[int, int] = {}
         self.set_owners({int(k): v for k, v in (data.get("owners") or {}).items()})
         for rec in rounds:
@@ -84,6 +88,7 @@ class ReverseDraw:
             "owners": {str(k): v for k, v in sorted(self.owners.items())},
             "rounds": self.rounds,
             "undone": self.undone,
+            "source_dataframe": self.source_dataframe,
         }
 
     # ---- queries ------------------------------------------------------------
@@ -176,6 +181,7 @@ class ReverseDraw:
         validate_schedule(self.schedule)
         if not keep_owners:
             self.owners.clear()
+            self.source_dataframe = None
 
     def set_owners(self, mapping: dict[int, str]) -> None:
         clean: dict[int, str] = {}
