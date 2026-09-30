@@ -154,18 +154,6 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("&lt;Jane&gt;", html_body)
         self.assertIn("#7, #9", text_body)
 
-    def test_test_message_is_clearly_labeled(self):
-        subject, html_body, text_body = render_ticket_email(
-            name="Tester",
-            new_tickets=[101],
-            all_tickets=[101, 202],
-            app_url="https://draw.example.com",
-            test_mode=True,
-        )
-        self.assertTrue(subject.startswith("[TEST]"))
-        self.assertIn("TEST MESSAGE", html_body)
-        self.assertIn("sample ticket numbers", text_body)
-
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
         values = {
             "EMAIL_PROVIDER": "smtp",

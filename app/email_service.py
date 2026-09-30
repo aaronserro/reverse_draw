@@ -35,7 +35,6 @@ class EmailClient(Protocol):
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
-        test_mode: bool = False,
     ) -> dict: ...
 
 
@@ -103,7 +102,6 @@ class SMTPEmailClient:
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
-        test_mode: bool = False,
     ) -> dict:
         if not self.settings.configured:
             raise EmailSendError("SMTP email is not configured.")
@@ -112,7 +110,6 @@ class SMTPEmailClient:
             new_tickets=new_tickets,
             all_tickets=all_tickets,
             app_url=self.settings.app_url,
-            test_mode=test_mode,
         )
         message = EmailMessage()
         message["Subject"] = subject
@@ -272,7 +269,6 @@ class GraphEmailClient:
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
-        test_mode: bool = False,
     ) -> dict:
         token = self._access_token()
         subject, html_body, _ = render_ticket_email(
@@ -280,7 +276,6 @@ class GraphEmailClient:
             new_tickets=new_tickets,
             all_tickets=all_tickets,
             app_url=self.settings.app_url,
-            test_mode=test_mode,
         )
         endpoint = (
             "https://graph.microsoft.com/v1.0/users/"
@@ -340,12 +335,7 @@ def build_email_client(
 
 
 def render_ticket_email(
-    *,
-    name: str,
-    new_tickets: list[int],
-    all_tickets: list[int],
-    app_url: str,
-    test_mode: bool = False,
+    *, name: str, new_tickets: list[int], all_tickets: list[int], app_url: str
 ) -> tuple[str, str, str]:
     safe_name = html.escape(name)
     safe_org = html.escape(config.ORG_NAME)
@@ -358,28 +348,18 @@ def render_ticket_email(
         for ticket in sorted(new_tickets)
     )
     all_numbers = ", ".join(f"#{ticket}" for ticket in sorted(all_tickets))
-    subject = (
-        f"{'[TEST] ' if test_mode else ''}Your {config.ORG_NAME} ticket numbers"
-    )
-    test_notice = (
-        '<div style="margin:0 0 20px;padding:14px;border-radius:10px;'
-        'background:#fff4d6;color:#725300;font-weight:700">TEST MESSAGE — '
-        "These sample ticket numbers are not a real allocation.</div>"
-        if test_mode
-        else ""
-    )
+    subject = f"Your {config.ORG_NAME} ticket numbers"
     html_body = f"""
 <!doctype html>
 <html><body style="margin:0;background:#f6f5f1;font-family:Arial,sans-serif;color:#14202b">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px">
 <tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#fff;border:1px solid #e3e1da;border-radius:16px;overflow:hidden">
 <tr><td style="padding:30px;background:#17324d;color:#fff"><div style="font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#8ec9d6">{safe_org}</div><h1 style="margin:8px 0 0;font-size:30px">Your tickets are ready</h1></td></tr>
-<tr><td style="padding:30px">{test_notice}<p style="font-size:17px">Hello {safe_name},</p><p>Your newly allocated Reverse Draw ticket numbers are:</p><div style="margin:18px 0">{new_chips}</div><p style="color:#3e4852"><b>All of your current tickets:</b><br>{html.escape(all_numbers)}</p><div style="margin:26px 0;padding:18px;border-radius:12px;background:#fdf1cc;color:#7a5700"><b>Prize: {safe_prize}</b><br>Keep these numbers handy and follow the live draw board.</div><p><a href="{safe_url}" style="display:inline-block;padding:13px 20px;border-radius:10px;background:#17324d;color:#fff;text-decoration:none;font-weight:700">Open the public board</a></p><p style="margin-top:30px;font-size:13px;color:#5b6570">This message was sent because new tickets were allocated to your email address. Please contact the draw organizer if anything looks incorrect.</p></td></tr>
+<tr><td style="padding:30px"><p style="font-size:17px">Hello {safe_name},</p><p>Your newly allocated Reverse Draw ticket numbers are:</p><div style="margin:18px 0">{new_chips}</div><p style="color:#3e4852"><b>All of your current tickets:</b><br>{html.escape(all_numbers)}</p><div style="margin:26px 0;padding:18px;border-radius:12px;background:#fdf1cc;color:#7a5700"><b>Prize: {safe_prize}</b><br>Keep these numbers handy and follow the live draw board.</div><p><a href="{safe_url}" style="display:inline-block;padding:13px 20px;border-radius:10px;background:#17324d;color:#fff;text-decoration:none;font-weight:700">Open the public board</a></p><p style="margin-top:30px;font-size:13px;color:#5b6570">This message was sent because new tickets were allocated to your email address. Please contact the draw organizer if anything looks incorrect.</p></td></tr>
 </table></td></tr></table></body></html>
 """.strip()
     text_body = (
-        ("TEST MESSAGE — sample ticket numbers only.\n\n" if test_mode else "")
-        + f"Hello {name},\n\n"
+        f"Hello {name},\n\n"
         f"Your new {config.ORG_NAME} tickets: "
         f"{', '.join(f'#{ticket}' for ticket in sorted(new_tickets))}\n\n"
         f"All current tickets: {all_numbers}\n"

@@ -1,13 +1,13 @@
-const CACHE = "reverse-draw-shell-v10";
+const CACHE = "reverse-draw-shell-v9";
 const SHELL = [
   "/",
   "/admin",
   "/manifest.webmanifest",
-  "/static/styles.css?v=10",
-  "/static/common.js?v=10",
-  "/static/public.js?v=10",
-  "/static/admin.js?v=10",
-  "/static/pwa.js?v=10",
+  "/static/styles.css?v=9",
+  "/static/common.js?v=9",
+  "/static/public.js?v=9",
+  "/static/admin.js?v=9",
+  "/static/pwa.js?v=9",
   "/static/app-icon.svg",
   "/static/app-icon-maskable.svg"
 ];
