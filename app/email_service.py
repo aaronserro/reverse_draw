@@ -355,7 +355,7 @@ def render_ticket_email(
     safe_org = html.escape(config.ORG_NAME)
     safe_prize = html.escape(config.PRIZE_TEXT)
     safe_url = html.escape(app_url, quote=True)
-    safe_trading_url = html.escape(f"{app_url}/trading", quote=True)
+    safe_trading_url = html.escape(f"{app_url}/trading/login", quote=True)
     safe_trading_code = html.escape(trading_code)
     new_chips = "".join(
         f'<span class="ticket-chip" style="display:inline-block;margin:5px;'
@@ -459,7 +459,7 @@ def render_ticket_email(
         f"All current tickets: {all_numbers}\n"
         f"Grand prize: {config.PRIZE_TEXT}\n\n"
         f"Your private trading login code: {trading_code}\n"
-        f"Sign in to ticket trading: {app_url}/trading\n"
+        f"Sign in to ticket trading: {app_url}/trading/login\n"
         "Use your full name and keep this code private.\n\n"
         f"View the live draw board: {app_url}\n\n"
         "This confirmation was sent because tickets were allocated to your "

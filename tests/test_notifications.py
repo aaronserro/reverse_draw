@@ -189,7 +189,7 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("Reply to this email", text_body)
         self.assertIn("042731", html_body)
         self.assertIn("042731", text_body)
-        self.assertIn("https://draw.example.com/trading", text_body)
+        self.assertIn("https://draw.example.com/trading/login", text_body)
 
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
         values = {

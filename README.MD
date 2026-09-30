@@ -4,7 +4,7 @@ A web app for running a reverse draw. It starts with 1000 tickets, includes thre
 
 - **Public page (`/`)** opens on a landing screen that asks for the 6-digit access code. After that it shows the announcement band, the headline counts, the ticket board, an "Am I still in?" lookup, the round list and a short "How it works". It picks up new results every 10 seconds.
 - **Admin page (`/admin`)** needs a password. From it you run, undo and reset rounds, manage ticket holders, view the elimination log and download CSV files.
-- **Trading page (`/trading`)** lets an assigned ticket holder securely sign in and see only their own tickets. Trade controls are intentionally not implemented yet.
+- **Trading page (`/trading`)** introduces the future marketplace while keeping the same primary navigation as the public site. Its separate login page (`/trading/login`) lets an assigned holder securely sign in and see only their own tickets. Trade controls are intentionally not implemented yet.
 
 The stack is FastAPI (Python), plain HTML/CSS/JS and Postgres (Supabase). Everything runs as one Render web service.
 

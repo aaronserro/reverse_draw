@@ -1,15 +1,17 @@
-const CACHE = "reverse-draw-shell-v15";
+const CACHE = "reverse-draw-shell-v16";
 const SHELL = [
   "/",
   "/admin",
   "/trading",
+  "/trading/login",
   "/manifest.webmanifest",
-  "/static/styles.css?v=15",
-  "/static/common.js?v=15",
-  "/static/public.js?v=15",
-  "/static/admin.js?v=15",
-  "/static/trading.js?v=15",
-  "/static/pwa.js?v=15",
+  "/static/styles.css?v=16",
+  "/static/common.js?v=16",
+  "/static/public.js?v=16",
+  "/static/admin.js?v=16",
+  "/static/trading.js?v=16",
+  "/static/trading-page.js?v=16",
+  "/static/pwa.js?v=16",
   "/static/app-icon.svg",
   "/static/app-icon-maskable.svg"
 ];

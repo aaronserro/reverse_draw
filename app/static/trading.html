@@ -8,88 +8,68 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Reverse Draw">
-  <title>Ticket Trading · Reverse Draw</title>
+  <title>Trading · Reverse Draw</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/app-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=15">
+  <link rel="stylesheet" href="/static/styles.css?v=16">
 </head>
 <body>
-  <header class="nav">
+  <header class="nav" id="top">
     <div class="nav-inner">
       <a class="brand" href="/">
         <div class="avatar" data-org-initials></div>
-        <div><div class="brand-name" data-org-name>Reverse Draw</div><div class="brand-sub">Secure ticket access</div></div>
+        <div><div class="brand-name" data-org-name>Reverse Draw</div><div class="brand-sub">Ticket marketplace</div></div>
       </a>
       <div class="nav-right">
         <nav class="nav-links" aria-label="Primary navigation">
           <a href="/">Board</a>
+          <a href="/#rounds">Draw stages</a>
+          <a href="/#how">How it works</a>
           <a class="on" href="/trading" aria-current="page">Trading</a>
         </nav>
+        <span class="nav-sep"></span>
         <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
+        <a class="btn ghost sm" href="/admin">Admin</a>
       </div>
     </div>
   </header>
 
-  <main class="trading-main">
+  <main class="trading-main trading-landing-main">
     <section class="trading-intro">
-      <div class="eyebrow">Ticket holder portal</div>
-      <h1>Trading starts with secure access.</h1>
-      <p class="lead">Sign in with the exact name on your ticket allocation and the private six-digit code provided by the draw organizer.</p>
+      <div class="eyebrow">Ticket marketplace</div>
+      <h1>A new way to connect ticket holders.</h1>
+      <p class="lead">The trading platform will give verified ticket holders a secure place to manage future ticket-trading activity. Trading itself is not available yet.</p>
       <div class="security-points" aria-label="Security information">
-        <span>🔒 Private session</span>
-        <span>⏱ Rate-limited login</span>
-        <span>🎟 Your tickets only</span>
+        <span>✓ Verified holders</span>
+        <span>✓ Private ticket access</span>
+        <span>✓ Secure sessions</span>
       </div>
     </section>
 
-    <section class="card trading-card" id="traderLoginView">
+    <section class="card trading-card trading-entry-card">
       <div class="trading-card-head">
         <div class="avatar large" data-org-initials></div>
-        <div><h2>Ticket holder sign in</h2><p>Trading functionality will be added later. This login verifies your identity and ticket access.</p></div>
+        <div><h2>Ticket holder access</h2><p>Already have tickets? Verify your identity on the secure login page.</p></div>
       </div>
-      <form id="traderLoginForm" autocomplete="on">
-        <label class="field-label" for="traderName">Full name</label>
-        <input class="input" id="traderName" name="name" type="text" maxlength="120" autocomplete="name" autocapitalize="words" required placeholder="Enter the name used for your tickets">
-
-        <fieldset class="code-fieldset">
-          <legend>Six-digit access code</legend>
-          <div class="otp" id="traderOtp">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 1" autocomplete="one-time-code">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 2">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 3">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 4">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 5">
-            <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 6">
-          </div>
-        </fieldset>
-
-        <div class="form-error" id="traderLoginError" role="alert"></div>
-        <button class="btn primary lg block" id="traderLoginButton" type="submit" disabled>Sign in securely</button>
-      </form>
-      <p class="trading-help">Codes are issued by the draw organizer when tickets are assigned. For security, unsuccessful attempts are limited.</p>
-    </section>
-
-    <section class="card trading-card hidden" id="traderAccountView">
-      <div class="account-head">
-        <div><div class="eyebrow">Signed in securely</div><h2 id="traderWelcome"></h2></div>
-        <button class="btn" id="traderLogout" type="button">Sign out</button>
+      <div class="trading-entry-list">
+        <div><b>Use your assigned name</b><span>Enter the full name attached to your tickets.</span></div>
+        <div><b>Use your private code</b><span>Find the six-digit code in your ticket email.</span></div>
       </div>
-      <div class="banner ok"><div><b>Your identity is verified.</b><br>Ticket trading controls are coming later. No trades can be created yet.</div></div>
-      <div class="section-title">Tickets assigned to you</div>
-      <div class="trader-tickets" id="traderTickets"></div>
+      <a class="btn primary lg block" href="/trading/login">Go to secure login</a>
+      <p class="trading-help">No login code? Contact the draw organizer.</p>
     </section>
   </main>
 
   <footer class="page-foot">
-    <div class="inner"><span>Never share your private access code.</span><a href="/">Return to the public board</a></div>
+    <div class="inner"><span>Trading features are coming later.</span><a href="/">Return to the public board</a></div>
   </footer>
 
-  <script src="/static/common.js?v=15"></script>
-  <script src="/static/pwa.js?v=15"></script>
-  <script src="/static/trading.js?v=15"></script>
+  <script src="/static/common.js?v=16"></script>
+  <script src="/static/pwa.js?v=16"></script>
+  <script src="/static/trading-page.js?v=16"></script>
 </body>
 </html>

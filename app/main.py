@@ -513,6 +513,11 @@ def trading_page():
     return FileResponse(STATIC / "trading.html", headers=NO_CACHE)
 
 
+@app.get("/trading/login", include_in_schema=False)
+def trading_login_page():
+    return FileResponse(STATIC / "trading-login.html", headers=NO_CACHE)
+
+
 @app.get("/manifest.webmanifest", include_in_schema=False)
 def web_manifest():
     return FileResponse(
