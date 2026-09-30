@@ -1,13 +1,13 @@
-const CACHE = "reverse-draw-shell-v2";
+const CACHE = "reverse-draw-shell-v4";
 const SHELL = [
   "/",
   "/admin",
   "/manifest.webmanifest",
-  "/static/styles.css",
-  "/static/common.js",
-  "/static/public.js",
-  "/static/admin.js",
-  "/static/pwa.js",
+  "/static/styles.css?v=4",
+  "/static/common.js?v=4",
+  "/static/public.js?v=4",
+  "/static/admin.js?v=4",
+  "/static/pwa.js?v=4",
   "/static/app-icon.svg",
   "/static/app-icon-maskable.svg"
 ];
@@ -43,13 +43,12 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest") {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const network = fetch(request).then((response) => {
+      fetch(request)
+        .then((response) => {
           if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
           return response;
-        });
-        return cached || network;
-      })
+        })
+        .catch(() => caches.match(request))
     );
   }
 });
