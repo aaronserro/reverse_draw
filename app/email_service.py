@@ -121,11 +121,12 @@ class BrevoEmailClient:
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")[:500]
             raise EmailSendError(
-                f"Brevo rejected the message ({error.code}): {detail}"
+                f"The email provider rejected the message "
+                f"({error.code}): {detail}"
             ) from error
         except (urllib.error.URLError, TimeoutError) as error:
             raise EmailSendError(
-                f"The Brevo response was uncertain: {error}",
+                f"The email provider response was uncertain: {error}",
                 outcome_unknown=True,
             ) from error
 

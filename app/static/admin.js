@@ -355,9 +355,9 @@
     $("emailStatus").innerHTML =
       `<div class="banner ${statusClass} email-status"><div><b>${RD.fmt(preview.pending_people)} pending recipient(s) · ` +
       `${RD.fmt(preview.pending_tickets)} new ticket(s)</b>` +
-      `<br><span class="small">Provider: ${RD.esc(preview.provider.toUpperCase())} · Sender: ${RD.esc(preview.sender || "not set")}</span>` +
+      `<br><span class="small">Sender: ${RD.esc(preview.sender || "not configured")}</span>` +
       `${preview.reason ? `<br>${RD.esc(preview.reason)}` : ""}` +
-      `${preview.missing_settings.length ? `<br><span class="small">Missing: ${preview.missing_settings.map(RD.esc).join(", ")}</span>` : ""}</div></div>`;
+      `</div></div>`;
 
     const rows = preview.recipients.map((person) =>
       `<tr><td><b>${RD.esc(person.name)}</b><div class="small muted">${RD.esc(person.email)}</div></td>` +

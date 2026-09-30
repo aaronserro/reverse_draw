@@ -910,7 +910,7 @@ def _notification_preview(draw: ReverseDraw) -> dict:
         result["reason"] = "Fix the blocked recipients before sending."
     elif not settings.configured:
         result["reason"] = (
-            f"{settings.provider.upper()} email settings are incomplete."
+            "Email delivery is not configured. Contact the site owner."
         )
     elif not result["recipients"]:
         result["reason"] = "Everyone's current tickets have already been emailed."
