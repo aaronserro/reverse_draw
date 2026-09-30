@@ -4,135 +4,173 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f6f5f1">
   <title>Reverse Draw Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 
-<!-- Login -->
-<main class="wrap hidden" id="loginView">
-  <form class="panel login stack" id="loginForm">
-    <h2>Reverse Draw admin</h2>
-    <input type="password" id="password" placeholder="Admin password" autocomplete="current-password" required>
-    <button class="btn primary block" type="submit">Log in</button>
-    <div class="small muted"><a href="/">Back to the public board</a></div>
-  </form>
-</main>
+<!-- ============ Login ============ -->
+<div class="gate hidden" id="loginView">
+  <div class="card gate-card">
+    <div class="avatar lg" data-org-initials></div>
+    <h1>Admin sign in</h1>
+    <p class="muted">Run the draw and manage ticket holders.</p>
+    <form id="loginForm">
+      <input class="input lg" type="password" id="password" placeholder="Admin password" autocomplete="current-password" required>
+      <button class="btn primary lg block" type="submit" style="margin-top:12px">Sign in</button>
+    </form>
+    <div class="gate-foot"><a href="/">Go to the public board</a></div>
+  </div>
+</div>
 
-<!-- Admin app -->
-<main class="wrap hidden" id="appView">
-  <div class="topbar">
-    <h1>Reverse Draw admin</h1>
-    <div class="row">
-      <a class="btn" href="/" target="_blank" rel="noopener">Open public page ↗</a>
-      <button class="btn" id="logout">Log out</button>
+<!-- ============ Admin app ============ -->
+<div class="hidden" id="appView">
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <div class="avatar" data-org-initials></div>
+        <div><div class="brand-name"><span data-org-name></span> <span class="badge admin">Admin</span></div>
+          <div class="brand-sub" id="storageInfo"></div></div>
+      </div>
+      <div class="nav-right">
+        <a class="btn sm" href="/" target="_blank" rel="noopener">Public page ↗</a>
+        <button class="btn ghost sm" id="logout">Sign out</button>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <div class="banner err hidden" id="warnNoDb">
-    No database is connected (DATABASE_URL is not set). Everything will be lost when the server restarts.
-  </div>
-  <div class="banner warn hidden" id="warnSchedule">
-    The round settings in config.py changed after this draw started. The current draw keeps its original schedule;
-    reset the draw to use the new settings.
-  </div>
+  <main class="wrap">
+    <div class="banner err hidden" id="warnNoDb">⚠️ <div><b>No database connected.</b> DATABASE_URL isn't set, so everything will be lost when the server restarts.</div></div>
+    <div class="banner warn hidden" id="warnSchedule">⚠️ <div>The round settings in config.py changed after this draw started. This draw keeps its original schedule. Reset the draw to use the new settings.</div></div>
+    <div class="banner warn hidden" id="warnCode">🔓 <div>No public access code is set, so anyone with the link can see the board. Set PUBLIC_ACCESS_CODE in config.py or in Render.</div></div>
 
-  <div class="layout">
-    <aside class="side">
-      <div class="panel">
-        <h2>Draw controls</h2>
-        <ul class="steps" id="steps"></ul>
-        <div class="stack">
-          <button class="btn primary block" id="runNext">Run next round</button>
-          <button class="btn block" id="undo">Undo last round</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <details>
-          <summary>Reset draw</summary>
-          <div class="stack" style="margin-top:10px">
-            <label class="chk"><input type="checkbox" id="keepHolders" checked> Keep ticket holders</label>
-            <input type="text" id="resetConfirm" placeholder='Type RESET to confirm'>
-            <button class="btn danger block" id="reset">Reset</button>
+    <div class="admin-grid">
+      <!-- ---------- left: controls ---------- -->
+      <aside class="admin-side">
+        <section class="card">
+          <div class="card-head" style="margin-bottom:10px"><h2>Draw controls</h2></div>
+          <ol class="vtrack" id="vtrack"></ol>
+          <div class="next-box" id="nextBox"></div>
+          <div class="stack">
+            <button class="btn primary lg block" id="runNext">Run next round</button>
+            <button class="btn block" id="undo">Undo last round</button>
           </div>
-        </details>
-        <div class="stack">
-          <a class="btn block" href="/api/admin/export/log.csv">Download elimination log (CSV)</a>
-          <a class="btn block" href="/api/admin/export/tickets.csv">Download ticket status (CSV)</a>
-          <a class="btn block" href="/api/admin/export/holders.csv">Download ticket holders (CSV)</a>
-        </div>
-      </div>
-    </aside>
+        </section>
 
-    <section>
-      <div class="stats">
-        <div class="stat"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
-        <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
-        <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
-      </div>
+        <section class="card">
+          <h2 style="margin-bottom:12px">Downloads</h2>
+          <div class="stack">
+            <a class="btn block" href="/api/admin/export/log.csv">Elimination log (CSV)</a>
+            <a class="btn block" href="/api/admin/export/tickets.csv">Ticket status (CSV)</a>
+            <a class="btn block" href="/api/admin/export/holders.csv">Ticket holders (CSV)</a>
+          </div>
+        </section>
 
-      <article class="post">
-        <div class="meta">Posted in <span id="postedIn"></span> · <span class="muted">preview of the public page</span></div>
-        <div class="org">
-          <div class="avatar" id="avatar"></div>
-          <div><b id="orgName"></b><div class="meta" id="stamp"></div></div>
-        </div>
-        <h1 id="headline"></h1>
-        <p id="announce"></p>
-        <p id="closing"></p>
+        <section class="card">
+          <h2 style="margin-bottom:6px">Reset</h2>
+          <p class="hint">Clears every round and starts the draw again.</p>
+          <label class="check" style="margin-bottom:12px"><input type="checkbox" id="keepHolders" checked> Keep ticket holders</label>
+          <button class="btn danger block" id="reset">Reset draw…</button>
+        </section>
+      </aside>
 
-        <div style="margin-top:14px">
-          <input type="text" id="search" autocomplete="off" placeholder="Highlight a holder or ticket (e.g. Jane or 417)">
-          <div class="result" id="searchResult"></div>
-        </div>
-        <div class="board-wrap"><div class="board" id="board"></div></div>
-        <div class="legend">
-          <span><i style="background:var(--c-active)"></i>Still in</span>
-          <span><i style="background:var(--c-last)"></i>Out this round</span>
-          <span><i style="background:var(--c-out)"></i>Out earlier</span>
-          <span><i style="background:var(--c-win)"></i>Winner</span>
-          <span><i style="background:var(--c-hl)"></i>Search match</span>
-        </div>
-      </article>
+      <!-- ---------- right: board + data ---------- -->
+      <div>
+        <section class="card">
+          <div class="stats four">
+            <div class="stat green"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
+            <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
+            <div class="stat"><div class="k">Rounds</div><div class="v" id="statRound">–</div></div>
+            <div class="stat"><div class="k">Holders assigned</div><div class="v" id="statHolders">–</div></div>
+          </div>
+          <div class="bar"><i id="statBar" style="width:100%"></i></div>
+        </section>
 
-      <div class="panel">
-        <div class="tabs">
-          <button class="tab on" data-tab="holders">Ticket holders</button>
-          <button class="tab" data-tab="people">By person</button>
-          <button class="tab" data-tab="log">Elimination log</button>
-        </div>
+        <section class="card hero" id="hero"></section>
 
-        <div data-pane="holders">
-          <p class="small muted">One line per ticket: <code>ticket,name</code>. A header row is fine. Tickets not listed are unassigned.</p>
-          <textarea id="holdersCsv" spellcheck="false"></textarea>
-          <div class="row" style="margin-top:8px">
-            <label class="btn">Load CSV file…<input type="file" id="csvFile" accept=".csv,text/csv" hidden></label>
-            <span></span>
-            <button class="btn" id="mergeHolders" title="Add/overwrite the listed tickets, keep everyone else">Merge</button>
-            <button class="btn primary" id="saveHolders" title="Replace all holders with exactly this list">Save (replace all)</button>
+        <section class="card">
+          <div class="card-head">
+            <h2>Ticket board</h2>
+            <div class="legend" id="legend"></div>
+          </div>
+          <input class="input" type="text" id="search" autocomplete="off" placeholder="Search a name or ticket number (e.g. Jane or 417)">
+          <div class="search-results" id="searchResult"></div>
+          <div class="board-wrap" style="margin-top:12px"><div class="board" id="board"></div></div>
+        </section>
+
+        <section class="card">
+          <div class="tabs" role="tablist">
+            <button class="tab on" data-tab="holders">Ticket holders</button>
+            <button class="tab" data-tab="people">By person</button>
+            <button class="tab" data-tab="log">Elimination log</button>
           </div>
 
-          <h2 style="margin-top:22px">Assign a block of tickets</h2>
-          <div class="row">
-            <input type="text" id="blockName" placeholder="Name" style="flex:2 1 180px">
-            <input type="number" id="blockStart" placeholder="From" min="1" style="flex:1 1 90px">
-            <input type="number" id="blockEnd" placeholder="To" min="1" style="flex:1 1 90px">
-            <button class="btn" id="assignBlock">Assign</button>
+          <div data-pane="holders">
+            <p class="hint">One line per ticket as <code>ticket,name</code>. A header row is fine. Tickets that aren't listed stay unassigned.</p>
+            <textarea class="input" id="holdersCsv" spellcheck="false" placeholder="ticket,name&#10;1,Jane Doe&#10;2,Bob Smith"></textarea>
+            <div class="field-row" style="margin-top:10px; justify-content:space-between">
+              <label class="btn file-btn">📄 Load CSV file…<input type="file" id="csvFile" accept=".csv,text/csv,text/plain"></label>
+              <div class="field-row">
+                <button class="btn" id="mergeHolders" title="Add or overwrite the listed tickets and keep everyone else">Merge</button>
+                <button class="btn primary" id="saveHolders" title="Replace all holders with exactly this list">Save (replace all)</button>
+              </div>
+            </div>
+
+            <div class="section-title">Assign a block of tickets</div>
+            <div class="field-row">
+              <input class="input" type="text" id="blockName" placeholder="Name" style="flex:2 1 200px">
+              <input class="input" type="number" id="blockStart" placeholder="From #" min="1" style="flex:1 1 100px">
+              <input class="input" type="number" id="blockEnd" placeholder="To #" min="1" style="flex:1 1 100px">
+              <button class="btn" id="assignBlock">Assign</button>
+            </div>
           </div>
-        </div>
 
-        <div data-pane="people" class="hidden">
-          <div class="scroll"><table id="people"></table></div>
-        </div>
+          <div data-pane="people" class="hidden">
+            <input class="input" type="text" id="peopleFilter" placeholder="Filter by name" style="margin-bottom:12px">
+            <div class="scroll"><table id="people"></table></div>
+          </div>
 
-        <div data-pane="log" class="hidden">
-          <div id="log"></div>
+          <div data-pane="log" class="hidden"><div id="log"></div></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ Full-screen round runner ============ -->
+<dialog class="round-stage" id="roundStage" aria-labelledby="roundStageTitle">
+  <div class="round-stage-shell">
+    <header class="round-stage-head">
+      <div>
+        <div class="eyebrow" id="roundStageEyebrow">Ready to draw</div>
+        <h1 id="roundStageTitle">Run next round</h1>
+        <p class="muted" id="roundStageSummary"></p>
+      </div>
+      <button class="btn round-stage-close" id="roundStageClose" type="button" aria-label="Close round screen">✕ Close</button>
+    </header>
+
+    <main class="round-stage-main">
+      <div class="round-stage-board-wrap">
+        <div class="board" id="roundStageBoard"></div>
+        <div class="draw-animation hidden" id="drawAnimation" role="status" aria-live="polite">
+          <div class="draw-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="draw-count" id="drawCount">4</div>
+          <div class="draw-label">Drawing tickets…</div>
+          <div class="draw-progress" aria-hidden="true"><i></i></div>
         </div>
       </div>
-    </section>
+    </main>
+
+    <footer class="round-stage-actions">
+      <div class="legend" id="roundStageLegend"></div>
+      <button class="btn primary lg" id="roundStageRun" type="button">Run round</button>
+    </footer>
   </div>
-</main>
+</dialog>
 
 <script src="/static/common.js"></script>
 <script src="/static/admin.js"></script>

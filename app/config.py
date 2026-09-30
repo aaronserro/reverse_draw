@@ -32,6 +32,13 @@ ROUND_LABELS = ["Round 1", "Round 2", "Round 3", "Finalists", "Grand Prize"]
 # Set an int only for testing - it makes every draw predictable.
 RANDOM_SEED = None
 
+# --- Public access code ------------------------------------------------------
+# The 6-digit code people type to see the public page. "" = no code needed.
+# If your GitHub repo is public, set the code in Render instead (Environment ->
+# PUBLIC_ACCESS_CODE); that value overrides this one.
+PUBLIC_ACCESS_CODE = "123456"
+PUBLIC_SESSION_DAYS = 14             # How long a device stays "logged in"
+
 # --- Public page -------------------------------------------------------------
 PUBLIC_SHOW_HOLDER_NAMES = False     # True = public page can search/show holder names
 PUBLIC_SHOW_WINNER_NAME = True       # Show the winner's name in the announcement
@@ -41,11 +48,11 @@ PUBLIC_REFRESH_SECONDS = 10          # How often the public page checks for new 
 GRID_COLUMNS = 40                    # Squares per row
 HIGHLIGHT_LAST_ROUND = True          # Shade the latest eliminations darker
 
-COLOR_ACTIVE = "#2e9e3e"             # Still in
-COLOR_ELIMINATED = "#5f6368"         # Out in an earlier round
-COLOR_LAST_ROUND = "#3d4043"         # Out in the most recent round
-COLOR_WINNER = "#f4b400"             # Winner(s)
-COLOR_HIGHLIGHT = "#1e88e5"          # Squares matching the search box
+COLOR_ACTIVE = "#2e8b47"             # Still in
+COLOR_ELIMINATED = "#dcdfe0"         # Out in an earlier round
+COLOR_LAST_ROUND = "#8b949c"         # Out in the most recent round
+COLOR_WINNER = "#e8a900"             # Winner(s)
+COLOR_HIGHLIGHT = "#1e6fd9"          # Squares matching the search box
 
 # --- Admin -------------------------------------------------------------------
 ADMIN_SESSION_HOURS = 12             # How long an admin login lasts

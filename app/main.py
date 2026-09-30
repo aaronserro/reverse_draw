@@ -1,11 +1,12 @@
 """
 Reverse Draw - FastAPI app.
 
-Public:  GET /            board page
-         GET /api/config  display settings
-         GET /api/state   current draw (no holder names unless enabled in config)
-Admin:   GET /admin       control page (password login)
-         /api/admin/...   run/undo/reset rounds, manage holders, CSV exports
+Public:  GET /             board page (asks for the 6-digit access code first)
+         POST /api/access  check the access code
+         GET /api/config   display settings (no secrets)
+         GET /api/state    current draw (needs the access code)
+Admin:   GET /admin        control page (password login)
+         /api/admin/...    run/undo/reset rounds, manage holders, CSV exports
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -42,9 +44,11 @@ log = logging.getLogger("reverse_draw")
 
 STATIC = Path(__file__).parent / "static"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+PUBLIC_CODE = (os.getenv("PUBLIC_ACCESS_CODE") or str(config.PUBLIC_ACCESS_CODE or "")).strip()
 SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 ON_RENDER = bool(os.getenv("RENDER"))
-COOKIE = "rd_admin"
+ADMIN_COOKIE = "rd_admin"
+PUBLIC_COOKIE = "rd_public"
 
 store = None
 
@@ -55,8 +59,10 @@ async def lifespan(_: FastAPI):
     store = make_store()
     if not ADMIN_PASSWORD:
         log.warning("ADMIN_PASSWORD is not set - the admin page is disabled.")
+    if PUBLIC_CODE and not re.fullmatch(r"\d{6}", PUBLIC_CODE):
+        log.warning("PUBLIC_ACCESS_CODE should be exactly 6 digits (got %d characters).", len(PUBLIC_CODE))
     if not os.getenv("SECRET_KEY"):
-        log.warning("SECRET_KEY is not set - admin logins will reset whenever the server restarts.")
+        log.warning("SECRET_KEY is not set - logins will reset whenever the server restarts.")
     if ON_RENDER and store.kind == "sqlite":
         log.error("Running on Render without DATABASE_URL - the draw will be LOST on every restart.")
     yield
@@ -144,6 +150,7 @@ def admin_payload(d: ReverseDraw) -> dict:
         storage=store.kind,
         warn_no_db=ON_RENDER and store.kind == "sqlite",
         schedule_pending=d.started and d.schedule != current_schedule(),
+        public_code_set=bool(PUBLIC_CODE),
     )
     return out
 
@@ -153,40 +160,101 @@ def bad_request(e: Exception):
 
 
 # =============================================================================
-# Admin auth (single shared password, signed HttpOnly cookie)
+# Sessions (signed HttpOnly cookies)
 # =============================================================================
 def _sign(msg: str) -> str:
     return hmac.new(SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()
 
 
-def make_token() -> str:
-    exp = int(time.time() + config.ADMIN_SESSION_HOURS * 3600)
-    return f"{exp}.{_sign(f'admin.{exp}')}"
+def make_token(kind: str, seconds: int, bind: str = "") -> str:
+    exp = int(time.time() + seconds)
+    return f"{exp}.{_sign(f'{kind}.{exp}.{bind}')}"
 
 
-def token_ok(token: str | None) -> bool:
+def token_ok(token: str | None, kind: str, bind: str = "") -> bool:
     if not token or "." not in token:
         return False
     exp, sig = token.split(".", 1)
-    return exp.isdigit() and int(exp) > time.time() and hmac.compare_digest(sig, _sign(f"admin.{exp}"))
+    return exp.isdigit() and int(exp) > time.time() and hmac.compare_digest(sig, _sign(f"{kind}.{exp}.{bind}"))
+
+
+def _code_fingerprint() -> str:
+    # Changing the access code signs everyone out.
+    return hashlib.sha256(PUBLIC_CODE.encode()).hexdigest()[:12]
+
+
+def is_admin(request: Request) -> bool:
+    return token_ok(request.cookies.get(ADMIN_COOKIE), "admin")
+
+
+def is_viewer(request: Request) -> bool:
+    if not PUBLIC_CODE or is_admin(request):
+        return True
+    return token_ok(request.cookies.get(PUBLIC_COOKIE), "public", _code_fingerprint())
 
 
 def require_admin(request: Request) -> None:
-    if not token_ok(request.cookies.get(COOKIE)):
+    if not is_admin(request):
         raise HTTPException(status_code=401, detail="Not logged in.")
+
+
+def require_viewer(request: Request) -> None:
+    if not is_viewer(request):
+        raise HTTPException(status_code=401, detail="Access code required.")
+
+
+def set_cookie(response: Response, name: str, value: str, seconds: int) -> None:
+    response.set_cookie(name, value, max_age=seconds, httponly=True, secure=ON_RENDER, samesite="lax")
 
 
 _failures: dict[str, list[float]] = {}
 
 
-def throttle(ip: str) -> None:
+def throttle(key: str, limit: int) -> None:
     now = time.time()
-    recent = [t for t in _failures.get(ip, []) if now - t < 600]
-    _failures[ip] = recent
-    if len(recent) >= 8:
+    recent = [t for t in _failures.get(key, []) if now - t < 600]
+    _failures[key] = recent
+    if len(recent) >= limit:
         raise HTTPException(status_code=429, detail="Too many attempts. Try again in 10 minutes.")
 
 
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "?"
+
+
+# ---- public access code -----------------------------------------------------
+class CodeIn(BaseModel):
+    code: str
+
+
+@app.get("/api/access")
+def access_status(request: Request):
+    return {"required": bool(PUBLIC_CODE), "ok": is_viewer(request), "admin": is_admin(request)}
+
+
+@app.post("/api/access")
+def access_login(body: CodeIn, request: Request, response: Response):
+    if not PUBLIC_CODE:
+        return {"ok": True}
+    key = f"public:{client_ip(request)}"
+    throttle(key, 10)
+    code = re.sub(r"\D", "", body.code)
+    if not hmac.compare_digest(code.encode(), PUBLIC_CODE.encode()):
+        _failures.setdefault(key, []).append(time.time())
+        raise HTTPException(status_code=401, detail="That code isn't right. Try again.")
+    _failures.pop(key, None)
+    seconds = int(config.PUBLIC_SESSION_DAYS * 86400)
+    set_cookie(response, PUBLIC_COOKIE, make_token("public", seconds, _code_fingerprint()), seconds)
+    return {"ok": True}
+
+
+@app.post("/api/access/logout")
+def access_logout(response: Response):
+    response.delete_cookie(PUBLIC_COOKIE)
+    return {"ok": True}
+
+
+# ---- admin password -----------------------------------------------------------
 class LoginIn(BaseModel):
     password: str
 
@@ -195,40 +263,37 @@ class LoginIn(BaseModel):
 def login(body: LoginIn, request: Request, response: Response):
     if not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="ADMIN_PASSWORD is not configured on the server.")
-    ip = request.client.host if request.client else "?"
-    throttle(ip)
+    key = f"admin:{client_ip(request)}"
+    throttle(key, 8)
     if not hmac.compare_digest(body.password.encode(), ADMIN_PASSWORD.encode()):
-        _failures.setdefault(ip, []).append(time.time())
+        _failures.setdefault(key, []).append(time.time())
         raise HTTPException(status_code=401, detail="Wrong password.")
-    _failures.pop(ip, None)
-    response.set_cookie(
-        COOKIE,
-        make_token(),
-        max_age=config.ADMIN_SESSION_HOURS * 3600,
-        httponly=True,
-        secure=ON_RENDER,
-        samesite="strict",
-    )
+    _failures.pop(key, None)
+    seconds = int(config.ADMIN_SESSION_HOURS * 3600)
+    set_cookie(response, ADMIN_COOKIE, make_token("admin", seconds), seconds)
     return {"ok": True}
 
 
 @app.post("/api/admin/logout")
 def logout(response: Response):
-    response.delete_cookie(COOKIE)
+    response.delete_cookie(ADMIN_COOKIE)
     return {"ok": True}
 
 
 # =============================================================================
 # Pages
 # =============================================================================
+NO_CACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers=NO_CACHE)
 
 
 @app.get("/admin", include_in_schema=False)
 def admin_page():
-    return FileResponse(STATIC / "admin.html")
+    return FileResponse(STATIC / "admin.html", headers=NO_CACHE)
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -248,6 +313,9 @@ def get_config():
         "posted_in": config.POSTED_IN,
         "prize_text": config.PRIZE_TEXT,
         "closing_note": config.CLOSING_NOTE,
+        # The landing screen is shown before the access code is accepted, so it
+        # reads its headline figures from here rather than from /api/state.
+        "schedule": current_schedule(),
         "grid_columns": config.GRID_COLUMNS,
         "highlight_last_round": config.HIGHLIGHT_LAST_ROUND,
         "show_holder_names": config.PUBLIC_SHOW_HOLDER_NAMES,
@@ -262,7 +330,7 @@ def get_config():
     }
 
 
-@app.get("/api/state")
+@app.get("/api/state", dependencies=[Depends(require_viewer)])
 def get_state():
     with _cache_lock:
         hit = _public_cache.get("state")
@@ -324,7 +392,7 @@ class ResetIn(BaseModel):
 @app.post("/api/admin/reset", dependencies=admin)
 def reset(body: ResetIn):
     if body.confirm != "RESET":
-        bad_request(DrawError('Type RESET to confirm.'))
+        bad_request(DrawError("Type RESET to confirm."))
     with Mutation() as d:
         d.reset(keep_owners=body.keep_holders)
         log.warning("Draw reset (keep_holders=%s)", body.keep_holders)

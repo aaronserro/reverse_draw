@@ -3,47 +3,143 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f1">
   <title>Reverse Draw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<main class="wrap">
-  <div class="stats">
-    <div class="stat"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
-    <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
-    <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
-  </div>
 
-  <article class="post">
-    <div class="meta">Posted in <span id="postedIn"></span></div>
-    <div class="org">
-      <div class="avatar" id="avatar"></div>
-      <div><b id="orgName"></b><div class="meta" id="stamp"></div></div>
+<!-- ============ Landing: enter your 6-digit code ============ -->
+<div class="landing hidden" id="gateView">
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <div class="avatar" data-org-initials></div>
+        <div class="brand-name" data-org-name>Reverse Draw</div>
+      </div>
+      <div class="nav-right">
+        <span class="muted small">Access code required</span>
+        <a class="btn ghost sm" href="/admin">Admin sign in</a>
+      </div>
     </div>
-    <h1 id="headline">Loading…</h1>
-    <p id="announce"></p>
-    <p id="closing"></p>
+  </header>
 
-    <div class="board-wrap"><div class="board" id="board"></div></div>
-    <div class="legend">
-      <span><i style="background:var(--c-active)"></i>Still in</span>
-      <span><i style="background:var(--c-last)"></i>Out this round</span>
-      <span><i style="background:var(--c-out)"></i>Out earlier</span>
-      <span><i style="background:var(--c-win)"></i>Winner</span>
+  <main class="landing-main">
+    <div class="landing-copy">
+      <div class="eyebrow" id="landingEyebrow"></div>
+      <h1>Welcome. Let's see if you're still in it.</h1>
+      <p class="lead" id="landingLead"></p>
+      <div class="facts" id="landingFacts"></div>
     </div>
-  </article>
 
-  <section class="panel">
-    <h2>Am I still in?</h2>
-    <input type="text" id="lookup" inputmode="search" autocomplete="off" placeholder="Enter your ticket number">
-    <div class="result" id="lookupResult"></div>
-  </section>
+    <div class="code-card">
+      <div>
+        <h2>Enter your access code</h2>
+        <p class="sub">It's the 6-digit number in your invitation.</p>
+      </div>
+      <form id="codeForm" autocomplete="off">
+        <div class="otp" id="otp">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 1" autocomplete="one-time-code">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 2">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 3">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 4">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 5">
+          <input inputmode="numeric" pattern="[0-9]*" aria-label="Digit 6">
+        </div>
+        <div class="form-error" id="codeError"></div>
+        <button class="btn primary lg block" id="codeSubmit" type="submit" disabled>Continue to the board</button>
+      </form>
+      <div class="foot">No code? Ask the draw organizer. Once you're in, you only need your ticket number to check your status.</div>
+    </div>
+  </main>
 
-  <section class="panel">
-    <h2>Rounds</h2>
-    <ul class="history" id="history"></ul>
-  </section>
-</main>
+  <footer class="page-foot">
+    <div class="inner"><span id="landingNote"></span><span id="landingRefresh"></span></div>
+  </footer>
+</div>
+
+<!-- ============ Public board ============ -->
+<div class="hidden" id="appView">
+  <header class="nav" id="top">
+    <div class="nav-inner">
+      <div class="brand">
+        <div class="avatar" data-org-initials></div>
+        <div><div class="brand-name" data-org-name></div><div class="brand-sub" data-posted-in></div></div>
+      </div>
+      <div class="nav-right">
+        <nav class="nav-links">
+          <a class="on" href="#top">Board</a>
+          <a href="#rounds">Rounds</a>
+          <a href="#how">How it works</a>
+        </nav>
+        <span class="nav-sep"></span>
+        <span class="live"><i></i>Live</span>
+        <span class="muted small" id="updated"></span>
+        <a class="btn ghost sm" href="/admin">Admin sign in</a>
+        <button class="btn ghost sm" id="leave" title="Sign out on this device">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero-band" id="hero"></section>
+
+  <main class="wrap flow">
+    <div class="stats">
+      <div class="stat green"><div class="k">Still in</div><div class="v" id="statIn">–</div></div>
+      <div class="stat"><div class="k">Eliminated</div><div class="v" id="statOut">–</div></div>
+      <div class="stat"><div class="k">Rounds complete</div><div class="v" id="statRound">–</div></div>
+    </div>
+
+    <article class="card">
+      <div class="post-head">
+        <div class="post-by">
+          <div class="avatar post" data-org-initials></div>
+          <div>
+            <b data-org-name></b>
+            <div class="sub" id="postedAt"></div>
+          </div>
+        </div>
+        <span class="post-meta" id="boardMeta"></span>
+      </div>
+      <p class="post-note" id="closingNote"></p>
+      <div class="board-wrap"><div class="board" id="board"></div></div>
+      <div class="legend" id="legend"></div>
+    </article>
+
+    <div class="split">
+      <section class="card lookup-card">
+        <h2>Am I still in?</h2>
+        <p class="muted small" id="lookupHint">Type your ticket number to find it on the board.</p>
+        <input class="input" type="text" id="lookup" inputmode="numeric" autocomplete="off" placeholder="Enter your ticket number">
+        <div class="lookup-result" id="lookupResult"></div>
+      </section>
+
+      <section class="card" id="rounds">
+        <h2>Rounds</h2>
+        <ol class="rounds" id="history"></ol>
+      </section>
+    </div>
+
+    <section class="card" id="how">
+      <h2>How it works</h2>
+      <div class="how">
+        <div class="step"><div class="n">1</div><b>Everyone starts in</b><p id="how1"></p></div>
+        <div class="step"><div class="n">2</div><b>Each round cuts the field</b><p id="how2"></p></div>
+        <div class="step"><div class="n">3</div><b>One ticket is left</b><p id="how3"></p></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="page-foot">
+    <div class="inner">
+      <span>Each round draws survivors at random using a fresh cryptographic seed, recorded for audit.</span>
+      <span id="refreshNote"></span>
+    </div>
+  </footer>
+</div>
 
 <script src="/static/common.js"></script>
 <script src="/static/public.js"></script>

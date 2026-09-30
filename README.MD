@@ -2,7 +2,7 @@
 
 A web app for running a reverse draw. It starts with 1000 tickets, and each round cuts the draw down: 500, 250, 100, 50, then 1 winner.
 
-- **Public page (`/`)** shows the board, the announcement post, an "Am I still in?" lookup and the round history. It picks up new results every 10 seconds.
+- **Public page (`/`)** opens on a landing screen that asks for the 6-digit access code. After that it shows the announcement band, the headline counts, the ticket board, an "Am I still in?" lookup, the round list and a short "How it works". It picks up new results every 10 seconds.
 - **Admin page (`/admin`)** needs a password. From it you run, undo and reset rounds, manage ticket holders, view the elimination log and download CSV files.
 
 The stack is FastAPI (Python), plain HTML/CSS/JS and Postgres (Supabase). Everything runs as one Render web service.
@@ -33,6 +33,9 @@ uvicorn app.main:app --reload
 Then open http://localhost:8000 for the public page and http://localhost:8000/admin for the admin page.
 
 When `DATABASE_URL` is empty, the app saves everything to a local `reverse_draw.db` file. That file is only for testing on your own machine.
+
+## Public access code
+The code people type to see the board is `PUBLIC_ACCESS_CODE` in `app/config.py` (default `123456`, so change it). If your GitHub repo is public, anyone can read that file. In that case, add `PUBLIC_ACCESS_CODE` as an environment variable in Render instead; it overrides the value in `config.py`. Changing the code signs everyone out, and admins never need it. Set it to `""` to turn the code off.
 
 ## Change the settings
 
