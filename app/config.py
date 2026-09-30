@@ -12,7 +12,7 @@ environment variables in Render. See README.md.
 ORG_NAME = "Reverse Draw"            # Name on the post header
 ORG_INITIALS = ""                    # Avatar letters; blank = first letters of ORG_NAME
 POSTED_IN = "All Company"            # "Posted in ..." line
-PRIZE_TEXT = "$8,000 CASH"
+PRIZE_TEXT = "$10,000 CASH"
 CLOSING_NOTE = "Finalists will be announced at the in-person Closing Ceremony."
 
 # --- Draw schedule -----------------------------------------------------------
@@ -72,6 +72,7 @@ RANDOM_SEED = None
 # PUBLIC_ACCESS_CODE); that value overrides this one.
 PUBLIC_ACCESS_CODE = "123456"
 PUBLIC_SESSION_DAYS = 14             # How long a device stays "logged in"
+TRADER_SESSION_DAYS = 7              # Holder trading-login session length
 
 # --- Public page -------------------------------------------------------------
 PUBLIC_SHOW_HOLDER_NAMES = False     # True = public page can search/show holder names

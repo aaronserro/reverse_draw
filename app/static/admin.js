@@ -96,14 +96,27 @@
   function renderPeople() {
     const f = $("peopleFilter").value.trim().toLowerCase();
     const people = state.summary.filter((p) => !f || p.holder.toLowerCase().includes(f));
+    const ready = state.summary.filter((p) => p.trading_ready).length;
+    $("downloadTradingCredentials").disabled = ready === 0;
+    $("tradingCredentialStatus").textContent = state.summary.length
+      ? `${RD.fmt(ready)} of ${RD.fmt(state.summary.length)} ticket holder(s) have a login code.`
+      : "Assign tickets before generating holder login codes.";
     const rows = people.map((p) =>
       `<tr><td><b>${RD.esc(p.holder)}</b></td><td class="r">${p.tickets.length}</td>` +
       `<td class="r"><span class="tag ${p.still_in ? "in" : "out"}">${p.still_in}</span></td>` +
       `<td class="small muted">${p.tickets.join(", ")}</td>` +
-      `<td class="r"><button class="btn sm" data-unassign-holder="${encodeURIComponent(p.holder)}">Deallocate</button></td></tr>`).join("");
+      `<td>${p.trading_ready ? `<code class="login-code">${RD.esc(p.trading_code)}</code>` : `<span class="tag out">Not generated</span>`}</td>` +
+      `<td class="r"><span class="field-row"><button class="btn sm" data-reset-trading="${encodeURIComponent(p.holder)}">Reset login</button>` +
+      `<button class="btn sm" data-unassign-holder="${encodeURIComponent(p.holder)}">Deallocate</button></span></td></tr>`).join("");
     $("people").innerHTML = state.summary.length
-      ? `<tr><th>Holder</th><th class="r">Tickets</th><th class="r">Still in</th><th>Ticket numbers</th><th></th></tr>${rows}`
+      ? `<tr><th>Holder</th><th class="r">Tickets</th><th class="r">Still in</th><th>Ticket numbers</th><th>Trading login</th><th></th></tr>${rows}`
       : `<tr><td class="muted">No holders assigned yet. Add them on the Ticket holders tab.</td></tr>`;
+  }
+
+  function captureTradingCredentials(credentials = []) {
+    if (credentials.length) {
+      RD.toast(`${RD.fmt(credentials.length)} new trading login code(s) generated.`);
+    }
   }
 
   function roundBlock(r, open, undone = false) {
@@ -130,6 +143,8 @@
   }
 
   function render() {
+    captureTradingCredentials(state.new_trading_credentials || []);
+    delete state.new_trading_credentials;
     RD.renderHero($("hero"), cfg, state);
     renderControls();
     renderStats();
@@ -583,10 +598,44 @@
     });
   };
 
-  $("people").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-unassign-holder]");
-    if (!button) return;
-    const name = decodeURIComponent(button.dataset.unassignHolder);
+  $("generateTradingCredentials").onclick = () => act(
+    () => RD.api("/api/admin/trading/credentials/generate", { method: "POST" }),
+    "Trading login access updated",
+  );
+
+  $("downloadTradingCredentials").onclick = () => {
+    const csvCell = (value) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = ["name,access_code", ...state.summary
+      .filter((person) => person.trading_ready)
+      .sort((a, b) => a.holder.localeCompare(b.holder))
+      .map((person) => `${csvCell(person.holder)},${person.trading_code}`)];
+    const url = URL.createObjectURL(new Blob([`${rows.join("\n")}\n`], { type: "text/csv" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "trading_login_codes.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  $("people").addEventListener("click", async (event) => {
+    const resetButton = event.target.closest("[data-reset-trading]");
+    if (resetButton) {
+      const name = decodeURIComponent(resetButton.dataset.resetTrading);
+      const ok = await RD.confirm({
+        title: `Reset ${name}'s trading login?`,
+        body: "Their current code and active trading session will stop working. Download and provide the newly generated code.",
+        confirmText: "Reset login code",
+        danger: true,
+      });
+      if (ok) await act(
+        () => RD.api("/api/admin/trading/credentials/reset", { method: "POST", body: { name } }),
+        "Trading login code reset",
+      );
+      return;
+    }
+    const unassignButton = event.target.closest("[data-unassign-holder]");
+    if (!unassignButton) return;
+    const name = decodeURIComponent(unassignButton.dataset.unassignHolder);
     unassignTickets({ name }, `all tickets for ${name}`);
   });
 

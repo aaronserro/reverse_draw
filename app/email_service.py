@@ -35,6 +35,7 @@ class EmailClient(Protocol):
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
+        trading_code: str,
     ) -> dict: ...
 
 
@@ -102,6 +103,7 @@ class SMTPEmailClient:
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
+        trading_code: str,
     ) -> dict:
         if not self.settings.configured:
             raise EmailSendError("SMTP email is not configured.")
@@ -110,6 +112,7 @@ class SMTPEmailClient:
             new_tickets=new_tickets,
             all_tickets=all_tickets,
             app_url=self.settings.app_url,
+            trading_code=trading_code,
         )
         message = EmailMessage()
         message["Subject"] = subject
@@ -273,6 +276,7 @@ class GraphEmailClient:
         name: str,
         new_tickets: list[int],
         all_tickets: list[int],
+        trading_code: str,
     ) -> dict:
         token = self._access_token()
         subject, html_body, _ = render_ticket_email(
@@ -280,6 +284,7 @@ class GraphEmailClient:
             new_tickets=new_tickets,
             all_tickets=all_tickets,
             app_url=self.settings.app_url,
+            trading_code=trading_code,
         )
         endpoint = (
             "https://graph.microsoft.com/v1.0/users/"
@@ -339,12 +344,19 @@ def build_email_client(
 
 
 def render_ticket_email(
-    *, name: str, new_tickets: list[int], all_tickets: list[int], app_url: str
+    *,
+    name: str,
+    new_tickets: list[int],
+    all_tickets: list[int],
+    app_url: str,
+    trading_code: str = "",
 ) -> tuple[str, str, str]:
     safe_name = html.escape(name)
     safe_org = html.escape(config.ORG_NAME)
     safe_prize = html.escape(config.PRIZE_TEXT)
     safe_url = html.escape(app_url, quote=True)
+    safe_trading_url = html.escape(f"{app_url}/trading", quote=True)
+    safe_trading_code = html.escape(trading_code)
     new_chips = "".join(
         f'<span class="ticket-chip" style="display:inline-block;margin:5px;'
         f'padding:12px 16px;border:1px solid #b7dfc2;border-radius:8px;'
@@ -406,6 +418,15 @@ def render_ticket_email(
     </table>
 </td></tr>
 <tr><td class="email-pad" style="padding:0 38px 28px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#edf7f2" style="background-color:#edf7f2;border:1px solid #bfdfcd;border-radius:10px">
+        <tr><td align="center" style="padding:20px;color:#174b32">
+            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Your private trading login code</div>
+            <div style="margin:7px 0 5px;font-family:Courier New,monospace;font-size:32px;line-height:38px;letter-spacing:7px;font-weight:700">{safe_trading_code}</div>
+            <div style="font-size:12px;line-height:18px;color:#496b5a">Sign in with your full name. Keep this code private.</div>
+        </td></tr>
+    </table>
+</td></tr>
+<tr><td class="email-pad" style="padding:0 38px 28px">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#fff5d9" style="background-color:#fff5d9;border-left:5px solid #e9ad24;border-radius:8px">
         <tr><td style="padding:18px 20px;color:#614900">
             <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Grand prize</div>
@@ -415,9 +436,10 @@ def render_ticket_email(
 </td></tr>
 <tr><td class="email-pad" align="center" style="padding:0 38px 32px">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td bgcolor="#176b3a" style="background-color:#176b3a;border-radius:8px">
-        <a href="{safe_url}" style="display:inline-block;padding:14px 24px;color:#ffffff;font-size:16px;line-height:20px;text-decoration:none;font-weight:700">View the live draw board&nbsp; →</a>
+        <a href="{safe_trading_url}" style="display:inline-block;padding:14px 24px;color:#ffffff;font-size:16px;line-height:20px;text-decoration:none;font-weight:700">Sign in to ticket trading&nbsp; →</a>
     </td></tr></table>
-    <p style="margin:14px 0 0;font-size:12px;line-height:19px;color:#71808e">If the button does not work, copy this address:<br><a href="{safe_url}" style="color:#315f83;word-break:break-all">{safe_url}</a></p>
+    <p style="margin:14px 0 0;font-size:12px;line-height:19px;color:#71808e">If the button does not work, copy this address:<br><a href="{safe_trading_url}" style="color:#315f83;word-break:break-all">{safe_trading_url}</a></p>
+    <p style="margin:10px 0 0;font-size:12px;line-height:19px"><a href="{safe_url}" style="color:#315f83">View the live draw board</a></p>
 </td></tr>
 <tr><td class="email-pad" bgcolor="#f7f8f9" style="padding:24px 38px;background-color:#f7f8f9;border-top:1px solid #e5e9ec;border-radius:0 0 14px 14px">
     <p style="margin:0 0 8px;font-size:13px;line-height:20px;color:#526271"><strong style="color:#283846">Why did I receive this?</strong><br>This confirmation was sent because tickets were allocated to your email address.</p>
@@ -436,6 +458,9 @@ def render_ticket_email(
         f"{', '.join(f'#{ticket}' for ticket in sorted(new_tickets))}\n\n"
         f"All current tickets: {all_numbers}\n"
         f"Grand prize: {config.PRIZE_TEXT}\n\n"
+        f"Your private trading login code: {trading_code}\n"
+        f"Sign in to ticket trading: {app_url}/trading\n"
+        "Use your full name and keep this code private.\n\n"
         f"View the live draw board: {app_url}\n\n"
         "This confirmation was sent because tickets were allocated to your "
         "email address. Reply to this email if anything looks incorrect.\n"

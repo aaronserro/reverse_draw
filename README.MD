@@ -1,9 +1,10 @@
 # Reverse Draw
 
-A web app for running a reverse draw. It starts with 1000 tickets, and each round cuts the draw down: 500, 250, 100, 50, then 1 winner.
+A web app for running a reverse draw. It starts with 1000 tickets, includes three gift-card draws, and stops with 10 grand-prize finalists.
 
 - **Public page (`/`)** opens on a landing screen that asks for the 6-digit access code. After that it shows the announcement band, the headline counts, the ticket board, an "Am I still in?" lookup, the round list and a short "How it works". It picks up new results every 10 seconds.
 - **Admin page (`/admin`)** needs a password. From it you run, undo and reset rounds, manage ticket holders, view the elimination log and download CSV files.
+- **Trading page (`/trading`)** lets an assigned ticket holder securely sign in and see only their own tickets. Trade controls are intentionally not implemented yet.
 
 The stack is FastAPI (Python), plain HTML/CSS/JS and Postgres (Supabase). Everything runs as one Render web service.
 
@@ -181,3 +182,17 @@ ticket,name
 2,"Smith, Bob"
 ```
 Paste the list or load a file on the admin **Ticket holders** tab. **Save** replaces every holder with the list. **Merge** only adds or overwrites the tickets in the list.
+
+## Holder trading login codes
+
+Every normalized holder name has one six-digit login code, even when that person
+owns multiple tickets. New codes are generated when tickets are assigned. The
+admin **By person** tab displays every current code and can download them as a
+CSV. Personalized ticket emails also include the holder's code and a link to the
+trading login. The readable value is reproducibly derived using `SECRET_KEY` and
+is never stored in the database.
+
+Resetting a holder's code immediately invalidates both the old code and existing
+trading sessions. Deallocating all of a holder's tickets removes that credential.
+A draw reset preserves credentials only when **Keep ticket holders** is selected.
+Sign-in failures use a generic message and are rate-limited by address and holder.

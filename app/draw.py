@@ -168,6 +168,13 @@ class ReverseDraw:
         self.notification_batches: list[dict] = list(
             data.get("notification_batches") or []
         )
+        # Per-person trading login metadata. Only a keyed digest is persisted;
+        # the six-digit code is returned once to the administrator.
+        self.holder_credentials: dict[str, dict] = {
+            str(key): dict(value)
+            for key, value in (data.get("holder_credentials") or {}).items()
+            if isinstance(value, dict)
+        }
         self.eliminated_in: dict[int, int] = {}
         self.set_owners({int(k): v for k, v in (data.get("owners") or {}).items()})
         for rec in rounds:
@@ -183,6 +190,7 @@ class ReverseDraw:
             "source_dataframe": self.source_dataframe,
             "allocation_source_fingerprint": self.allocation_source_fingerprint,
             "notification_batches": self.notification_batches,
+            "holder_credentials": self.holder_credentials,
         }
 
     # ---- queries ------------------------------------------------------------
@@ -298,6 +306,7 @@ class ReverseDraw:
             self.source_dataframe = None
             self.allocation_source_fingerprint = ""
             self.notification_batches.clear()
+            self.holder_credentials.clear()
 
     def set_owners(self, mapping: dict[int, str]) -> None:
         clean: dict[int, str] = {}

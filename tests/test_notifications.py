@@ -178,6 +178,7 @@ class EmailTemplateTests(unittest.TestCase):
             new_tickets=[7],
             all_tickets=[7, 9],
             app_url="https://draw.example.com",
+            trading_code="042731",
         )
         self.assertIn("ticket numbers", subject.lower())
         self.assertNotIn("<Jane>", html_body)
@@ -186,6 +187,9 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("@keyframes ticketReveal", html_body)
         self.assertIn("Why did I receive this?", html_body)
         self.assertIn("Reply to this email", text_body)
+        self.assertIn("042731", html_body)
+        self.assertIn("042731", text_body)
+        self.assertIn("https://draw.example.com/trading", text_body)
 
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
         values = {
@@ -249,7 +253,10 @@ class BatchProcessingTests(unittest.TestCase):
 
     def test_successful_graph_response_is_persisted(self):
         class FakeClient:
-            def send_ticket_email(self, **_message):
+            message = None
+
+            def send_ticket_email(self, **message):
+                self.message = message
                 return {"status_code": 202, "request_id": "request-123"}
 
         with tempfile.TemporaryDirectory() as directory:
@@ -258,6 +265,7 @@ class BatchProcessingTests(unittest.TestCase):
             main.store = test_store
             try:
                 draw = ReverseDraw()
+                draw.set_owners({1: "Jane Doe"})
                 draw.notification_batches = [
                     {
                         "id": "batch-1",
@@ -276,9 +284,8 @@ class BatchProcessingTests(unittest.TestCase):
                 with test_store.transaction() as box:
                     box.data = draw.to_dict()
 
-                with patch(
-                    "app.main.build_email_client", return_value=FakeClient()
-                ):
+                client = FakeClient()
+                with patch("app.main.build_email_client", return_value=client):
                     _process_notification_batch(
                         "batch-1",
                         [
@@ -292,6 +299,7 @@ class BatchProcessingTests(unittest.TestCase):
                     )
 
                 saved = ReverseDraw(test_store.read()).notification_batches[0]
+                self.assertRegex(client.message["trading_code"], r"^\d{6}$")
                 self.assertEqual(saved["status"], "completed")
                 self.assertEqual(saved["jobs"][0]["status"], "sent")
                 self.assertEqual(

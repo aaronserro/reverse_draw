@@ -54,6 +54,7 @@ SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 ON_RENDER = bool(os.getenv("RENDER"))
 ADMIN_COOKIE = "rd_admin"
 PUBLIC_COOKIE = "rd_public"
+TRADER_COOKIE = "rd_trader"
 
 store = None
 
@@ -70,12 +71,22 @@ async def lifespan(_: FastAPI):
         log.warning("SECRET_KEY is not set - logins will reset whenever the server restarts.")
     if ON_RENDER and store.kind == "sqlite":
         log.error("Running on Render without DATABASE_URL - the draw will be LOST on every restart.")
+    with Mutation() as draw:
+        _sync_holder_credentials(draw)
     yield
     store.close()
 
 
 app = FastAPI(title="Reverse Draw", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.middleware("http")
+async def prevent_api_caching(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # =============================================================================
@@ -149,6 +160,16 @@ def public_payload(d: ReverseDraw) -> dict:
 
 def admin_payload(d: ReverseDraw) -> dict:
     out = public_payload(d)
+    summary = d.holder_summary()
+    for person in summary:
+        holder_key = _person_key(person["holder"])
+        credential = d.holder_credentials.get(holder_key)
+        person["trading_ready"] = credential is not None
+        person["trading_code"] = (
+            _derive_holder_code(holder_key, credential)
+            if credential is not None
+            else ""
+        )
     out.update(
         holders={str(t): n for t, n in d.owners.items()},
         rounds=[{**round_summary(r), "seed": r["seed"], "eliminated": r["eliminated"]} for r in d.rounds],
@@ -156,7 +177,7 @@ def admin_payload(d: ReverseDraw) -> dict:
             {**round_summary(r), "seed": r["seed"], "undone_at": r["undone_at"], "eliminated": r["eliminated"]}
             for r in d.undone
         ],
-        summary=d.holder_summary(),
+        summary=summary,
         storage=store.kind,
         warn_no_db=ON_RENDER and store.kind == "sqlite",
         schedule_pending=d.schedule_pending,
@@ -217,6 +238,117 @@ def set_cookie(response: Response, name: str, value: str, seconds: int) -> None:
     response.set_cookie(name, value, max_age=seconds, httponly=True, secure=ON_RENDER, samesite="lax")
 
 
+def _holder_code_digest(holder_key: str, code: str) -> str:
+    return _sign(f"holder-code.{holder_key}.{code}")
+
+
+def _derive_holder_code(holder_key: str, credential: dict) -> str:
+    """Reproduce a credential's code without persisting the readable value."""
+    digest = hmac.new(
+        SECRET_KEY.encode(),
+        f"holder-code-v1.{holder_key}.{credential['id']}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return f"{int.from_bytes(digest[:8], 'big') % 1_000_000:06d}"
+
+
+def _active_holder_names(draw: ReverseDraw) -> dict[str, str]:
+    return {
+        _person_key(name): name
+        for name in draw.owners.values()
+        if _person_key(name)
+    }
+
+
+def _sync_holder_credentials(
+    draw: ReverseDraw, *, reset_keys: set[str] | None = None
+) -> list[dict]:
+    """Create missing credentials, prune unused ones, and return new codes once."""
+    active = _active_holder_names(draw)
+    reset_keys = reset_keys or set()
+    draw.holder_credentials = {
+        key: value
+        for key, value in draw.holder_credentials.items()
+        if key in active
+    }
+    generated = []
+    for key, display_name in sorted(active.items()):
+        credential = draw.holder_credentials.get(key)
+        if credential is not None and key not in reset_keys:
+            credential["name"] = display_name
+            code = _derive_holder_code(key, credential)
+            credential["digest"] = _holder_code_digest(key, code)
+            credential["code_scheme"] = "derived-v1"
+            continue
+        credential = {
+            "id": secrets.token_urlsafe(12),
+            "name": display_name,
+            "created_at": now_iso(),
+            "code_scheme": "derived-v1",
+        }
+        code = _derive_holder_code(key, credential)
+        credential["digest"] = _holder_code_digest(key, code)
+        draw.holder_credentials[key] = credential
+        generated.append({"name": display_name, "code": code})
+    return generated
+
+
+def _trader_token(credential: dict, seconds: int) -> str:
+    credential_id = str(credential["id"])
+    digest = str(credential["digest"])
+    exp = int(time.time() + seconds)
+    signature = _sign(f"trader.{credential_id}.{exp}.{digest}")
+    return f"{credential_id}.{exp}.{signature}"
+
+
+def _trader_identity(request: Request, draw: ReverseDraw) -> tuple[str, dict] | None:
+    token = request.cookies.get(TRADER_COOKIE, "")
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    credential_id, exp, signature = parts
+    if not exp.isdigit() or int(exp) <= time.time():
+        return None
+    match = next(
+        (
+            (key, credential)
+            for key, credential in draw.holder_credentials.items()
+            if hmac.compare_digest(
+                str(credential.get("id", "")), credential_id
+            )
+        ),
+        None,
+    )
+    if match is None or match[0] not in _active_holder_names(draw):
+        return None
+    expected = _sign(
+        f"trader.{credential_id}.{exp}.{match[1].get('digest', '')}"
+    )
+    if not hmac.compare_digest(signature, expected):
+        return None
+    return match
+
+
+def _trader_payload(draw: ReverseDraw, holder_key: str) -> dict:
+    name = _active_holder_names(draw)[holder_key]
+    tickets = sorted(
+        ticket
+        for ticket, holder in draw.owners.items()
+        if _person_key(holder) == holder_key
+    )
+    return {
+        "authenticated": True,
+        "name": name,
+        "tickets": [
+            {
+                "ticket": ticket,
+                "status": draw.status(ticket),
+            }
+            for ticket in tickets
+        ],
+    }
+
+
 _failures: dict[str, list[float]] = {}
 
 
@@ -264,6 +396,76 @@ def access_logout(response: Response):
     return {"ok": True}
 
 
+# ---- holder trading login --------------------------------------------------
+class TraderLoginIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    code: str = Field(min_length=1, max_length=20)
+
+
+@app.get("/api/trading/session")
+def trading_session(request: Request):
+    draw = load()
+    identity = _trader_identity(request, draw)
+    if identity is None:
+        return {"authenticated": False}
+    return _trader_payload(draw, identity[0])
+
+
+@app.post("/api/trading/login")
+def trading_login(body: TraderLoginIn, request: Request, response: Response):
+    holder_key = _person_key(body.name)
+    code = body.code.strip()
+    ip_failure_key = f"trader-ip:{client_ip(request)}"
+    holder_failure_key = (
+        f"trader-holder:{client_ip(request)}:"
+        f"{hashlib.sha256(holder_key.encode()).hexdigest()[:16]}"
+    )
+    throttle(ip_failure_key, 20)
+    throttle(holder_failure_key, 5)
+    draw = load()
+    credential = draw.holder_credentials.get(holder_key)
+    supplied_digest = _holder_code_digest(holder_key, code)
+    expected_digest = str((credential or {}).get("digest", "0" * 64))
+    valid = (
+        bool(re.fullmatch(r"\d{6}", code))
+        and holder_key in _active_holder_names(draw)
+        and credential is not None
+        and hmac.compare_digest(supplied_digest, expected_digest)
+    )
+    if not valid:
+        now = time.time()
+        _failures.setdefault(ip_failure_key, []).append(now)
+        _failures.setdefault(holder_failure_key, []).append(now)
+        raise HTTPException(
+            status_code=401,
+            detail="The name or six-digit access code is incorrect.",
+        )
+    _failures.pop(holder_failure_key, None)
+    seconds = int(config.TRADER_SESSION_DAYS * 86400)
+    response.set_cookie(
+        TRADER_COOKIE,
+        _trader_token(credential, seconds),
+        max_age=seconds,
+        httponly=True,
+        secure=ON_RENDER,
+        samesite="strict",
+        path="/",
+    )
+    return _trader_payload(draw, holder_key)
+
+
+@app.post("/api/trading/logout")
+def trading_logout(response: Response):
+    response.delete_cookie(
+        TRADER_COOKIE,
+        path="/",
+        secure=ON_RENDER,
+        httponly=True,
+        samesite="strict",
+    )
+    return {"ok": True}
+
+
 # ---- admin password -----------------------------------------------------------
 class LoginIn(BaseModel):
     password: str
@@ -304,6 +506,11 @@ def index():
 @app.get("/admin", include_in_schema=False)
 def admin_page():
     return FileResponse(STATIC / "admin.html", headers=NO_CACHE)
+
+
+@app.get("/trading", include_in_schema=False)
+def trading_page():
+    return FileResponse(STATIC / "trading.html", headers=NO_CACHE)
 
 
 @app.get("/manifest.webmanifest", include_in_schema=False)
@@ -439,11 +646,13 @@ def put_holders(body: HoldersIn):
         with Mutation() as d:
             mapping = d.parse_owner_csv(body.csv)
             d.set_owners(mapping if body.mode == "replace" else {**d.owners, **mapping})
+            new_credentials = _sync_holder_credentials(d)
             d.allocation_source_fingerprint = _source_fingerprint(
                 d.source_dataframe
             )
             out = admin_payload(d)
             out["imported"] = len(mapping)
+            out["new_trading_credentials"] = new_credentials
             return out
     except DrawError as e:
         bad_request(e)
@@ -1014,11 +1223,22 @@ def _process_notification_batch(batch_id: str, recipients: list[dict]) -> None:
         error_message = ""
         request_id = ""
         try:
+            current_draw = load()
+            holder_key = _person_key(recipient["name"])
+            credential = current_draw.holder_credentials.get(holder_key)
+            if credential is None:
+                with Mutation() as credential_draw:
+                    _sync_holder_credentials(credential_draw)
+                current_draw = load()
+                credential = current_draw.holder_credentials.get(holder_key)
+            if credential is None:
+                raise EmailSendError("Could not create a trading login code.")
             response = client.send_ticket_email(
                 recipient=recipient["email"],
                 name=recipient["name"],
                 new_tickets=recipient["new_tickets"],
                 all_tickets=recipient["all_tickets"],
+                trading_code=_derive_holder_code(holder_key, credential),
             )
             sent_at = now_iso()
             request_id = response.get("request_id", "")
@@ -1060,6 +1280,7 @@ def send_all_notifications(background_tasks: BackgroundTasks):
     batch_id = uuid.uuid4().hex
     with Mutation() as draw:
         _expire_stale_batches(draw)
+        _sync_holder_credentials(draw)
         if any(
             _batch_is_active(batch)
             for batch in draw.notification_batches
@@ -1201,8 +1422,10 @@ def assign_block(body: BlockIn):
     try:
         with Mutation() as d:
             n = d.assign_block(body.name, body.start, body.end)
+            new_credentials = _sync_holder_credentials(d)
             out = admin_payload(d)
             out["assigned"] = n
+            out["new_trading_credentials"] = new_credentials
             return out
     except DrawError as e:
         bad_request(e)
@@ -1220,11 +1443,37 @@ def unassign_holders(body: UnassignIn):
                 )
             else:
                 raise DrawError("Enter a holder name or ticket range.")
+            _sync_holder_credentials(draw)
             out = admin_payload(draw)
             out["unassigned"] = removed
             return out
     except DrawError as error:
         bad_request(error)
+
+
+class HolderCredentialIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+@app.post("/api/admin/trading/credentials/generate", dependencies=admin)
+def generate_missing_holder_credentials():
+    with Mutation() as draw:
+        generated = _sync_holder_credentials(draw)
+        out = admin_payload(draw)
+        out["new_trading_credentials"] = generated
+        return out
+
+
+@app.post("/api/admin/trading/credentials/reset", dependencies=admin)
+def reset_holder_credential(body: HolderCredentialIn):
+    holder_key = _person_key(body.name)
+    with Mutation() as draw:
+        if holder_key not in _active_holder_names(draw):
+            raise HTTPException(status_code=404, detail="Ticket holder not found.")
+        generated = _sync_holder_credentials(draw, reset_keys={holder_key})
+        out = admin_payload(draw)
+        out["new_trading_credentials"] = generated
+        return out
 
 
 def csv_response(text: str, name: str) -> PlainTextResponse:
