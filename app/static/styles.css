@@ -94,6 +94,18 @@ h1, h2, h3 { margin: 0; }
 .nav-links a.on { border-bottom-color: var(--teal); }
 .nav-right { display: flex; align-items: center; gap: 14px; }
 .nav-sep { width: 1px; height: 26px; background: var(--line); flex: none; }
+.nav-menu-toggle, .nav-shelf { display: none; }
+.nav-menu-toggle {
+  width: 42px; height: 42px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); cursor: pointer;
+  align-items: center; justify-content: center; flex-direction: column; gap: 4px;
+}
+.nav-menu-toggle span { width: 19px; height: 2px; border-radius: 2px; background: currentColor; transition: transform .16s ease, opacity .16s ease; }
+.nav-menu-toggle:hover { color: var(--teal); background: var(--surface-2); }
+.nav-menu-toggle:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.nav-menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(6px) rotate(45deg); }
+.nav-menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.nav-menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-6px) rotate(-45deg); }
 .avatar {
   width: 34px; height: 34px; border-radius: 8px; flex: none;
   background: var(--navy); color: #fff; letter-spacing: .02em;
@@ -579,6 +591,21 @@ dialog.modal::backdrop { background: rgba(20, 32, 43, .38); }
   .nav-right { gap: 6px; }
   .nav-links { display: none; }
   .nav-right .nav-sep, .nav-right .live { display: none; }
+  .nav-menu-toggle { display: inline-flex; flex: none; }
+  .nav-shelf {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 1;
+    padding: 8px 12px 12px; background: var(--surface); border-bottom: 1px solid var(--line);
+    box-shadow: 0 12px 24px rgba(18, 32, 49, .12);
+  }
+  .nav-shelf:not([hidden]) { display: grid; gap: 4px; }
+  .nav-shelf a {
+    min-height: 44px; padding: 10px 12px; border-radius: 8px;
+    display: flex; align-items: center; color: var(--text); font-size: 15px; font-weight: 600; text-decoration: none;
+  }
+  .nav-shelf a:hover { color: var(--teal); background: var(--surface-2); text-decoration: none; }
+  .nav-shelf a.on { color: var(--teal); background: var(--teal-soft); }
+  .nav-shelf a:focus-visible { outline: 2px solid var(--teal); outline-offset: -2px; }
+  .landing .nav-gate-link { display: none; }
   .nav-right .btn.sm { padding: 0 9px; }
   .card { padding: 16px 14px; border-radius: var(--radius); }
   .stats, .stats.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -626,6 +653,7 @@ dialog.modal::backdrop { background: rgba(20, 32, 43, .38); }
 }
 @media (display-mode: standalone) and (max-width: 760px) {
   .nav-inner { padding-top: env(safe-area-inset-top); height: calc(64px + env(safe-area-inset-top)); }
+  .nav-shelf { padding-left: calc(12px + env(safe-area-inset-left)); padding-right: calc(12px + env(safe-area-inset-right)); }
   .page-foot .inner { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .round-stage-head { padding-top: calc(14px + env(safe-area-inset-top)); }
   .round-stage-actions { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }

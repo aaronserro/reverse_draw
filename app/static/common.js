@@ -222,3 +222,40 @@ RD.store = {
   get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
 };
+
+// ---------------------------------------------------------------- mobile navigation
+(function initMobileNavigation() {
+  const menus = Array.from(document.querySelectorAll(".nav-menu-toggle")).map((toggle) => {
+    const shelf = document.getElementById(toggle.getAttribute("aria-controls"));
+    const header = toggle.closest(".nav");
+    if (!shelf || !header) return null;
+
+    const setOpen = (open) => {
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
+      shelf.hidden = !open;
+    };
+    const isOpen = () => toggle.getAttribute("aria-expanded") === "true";
+
+    toggle.addEventListener("click", () => setOpen(!isOpen()));
+    shelf.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => setOpen(false)));
+    return { toggle, header, setOpen, isOpen };
+  }).filter(Boolean);
+
+  if (!menus.length) return;
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const menu = menus.find(({ isOpen }) => isOpen());
+    if (!menu) return;
+    menu.setOpen(false);
+    menu.toggle.focus();
+  });
+  document.addEventListener("click", (event) => {
+    menus.forEach((menu) => {
+      if (menu.isOpen() && !menu.header.contains(event.target)) menu.setOpen(false);
+    });
+  });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 760) menus.forEach((menu) => menu.setOpen(false));
+  });
+})();

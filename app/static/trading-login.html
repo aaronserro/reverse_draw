@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Reverse Draw">
-  <title>Trading Login · Reverse Draw</title>
+  <title>Ticket Login · Reverse Draw</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/app-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=17">
+  <link rel="stylesheet" href="/static/styles.css?v=18">
 </head>
 <body>
   <header class="nav" id="top">
@@ -27,15 +27,20 @@
       <div class="nav-right">
         <nav class="nav-links" aria-label="Primary navigation">
           <a href="/#top">Board</a>
-          <a href="/#rounds">Draw stages</a>
-          <a href="/#how">How it works</a>
-          <a class="on" href="/trading" aria-current="page">Trading</a>
+          <a class="on" href="/trading" aria-current="page">Ticket Login</a>
         </nav>
         <span class="nav-sep"></span>
+        <button class="nav-menu-toggle" type="button" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobileNav">
+          <span></span><span></span><span></span>
+        </button>
         <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
         <a class="btn ghost sm" href="/admin">Admin</a>
       </div>
     </div>
+    <nav class="nav-shelf" id="mobileNav" aria-label="Mobile navigation" hidden>
+      <a href="/#top">Board</a>
+      <a class="on" href="/trading" aria-current="page">Ticket Login</a>
+    </nav>
   </header>
 
   <main class="trading-main">
@@ -82,18 +87,18 @@
         <div><div class="eyebrow">Signed in securely</div><h2 id="traderWelcome"></h2></div>
         <button class="btn" id="traderLogout" type="button">Sign out</button>
       </div>
-      <div class="banner ok"><div><b>Your identity is verified.</b><br>The trading dashboard shows your real tickets and the draw's progress. Trading itself is not live yet: there are no markets, prices or trades to see, and no trade can be created.</div></div>
-      <a class="btn primary lg block" href="/trading/dashboard">Open trading dashboard</a>
+      <div class="banner ok"><div><b>Your identity is verified.</b><br>The ticket dashboard shows your real tickets and the draw's progress. Additional ticket features are not live yet.</div></div>
+      <a class="btn primary lg block" href="/trading/dashboard">Open ticket dashboard</a>
       <div class="section-title">Tickets assigned to you</div>
       <div class="trader-tickets" id="traderTickets"></div>
     </section>
   </main>
 
   <footer class="page-foot">
-    <div class="inner"><span>Never share your private access code.</span><a href="/trading">Return to Trading</a></div>
+    <div class="inner"><span>Never share your private access code.</span><a href="/trading">Return to Ticket Login</a></div>
   </footer>
 
-  <script src="/static/common.js?v=17"></script>
+  <script src="/static/common.js?v=18"></script>
   <script src="/static/pwa.js?v=17"></script>
   <script src="/static/trading.js?v=17"></script>
 </body>
