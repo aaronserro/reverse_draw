@@ -343,9 +343,22 @@ def _trader_payload(draw: ReverseDraw, holder_key: str) -> dict:
             {
                 "ticket": ticket,
                 "status": draw.status(ticket),
+                # `active` is the machine-readable form of `status`, so the
+                # trading dashboard can tag a stub IN/OUT without parsing prose.
+                "active": ticket not in draw.eliminated_in,
             }
             for ticket in tickets
         ],
+        # Draw context for the trading dashboard. The public /api/state is
+        # gated behind the viewer access code, which a signed-in holder does
+        # not necessarily have, so the counts it needs travel with the session.
+        "draw": {
+            "total": draw.total,
+            "still_in": len(draw.active()),
+            "rounds_done": draw.rounds_done,
+            "rounds_total": len(draw.survivors),
+            "finished": draw.finished,
+        },
     }
 
 
@@ -516,6 +529,11 @@ def trading_page():
 @app.get("/trading/login", include_in_schema=False)
 def trading_login_page():
     return FileResponse(STATIC / "trading-login.html", headers=NO_CACHE)
+
+
+@app.get("/trading/dashboard", include_in_schema=False)
+def trading_dashboard_page():
+    return FileResponse(STATIC / "trading-dashboard.html", headers=NO_CACHE)
 
 
 @app.get("/manifest.webmanifest", include_in_schema=False)

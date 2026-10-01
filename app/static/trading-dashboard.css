@@ -1,0 +1,668 @@
+/* Trading dashboard.
+ *
+ * Port of "Trading Dashboard v3" (options 3a mobile / 3b desktop / 3c empty
+ * market) as one responsive page. The design was drawn in this site's palette,
+ * so every colour here resolves to a token already in styles.css; only the few
+ * shades the design introduced are declared locally below.
+ *
+ * Breakpoint: the 3a mobile layout is the base, 3b takes over at 860px. */
+
+.td-body {
+  --td-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --td-teal-line: #8ec9d6;
+  --td-gold-wash: #fffaeb;
+  --td-gold-ink-strong: #3d2c00;
+  --td-green-hi: #277a3d;
+  --td-danger-hi: #9a1f18;
+
+  margin: 0;
+  background: var(--bg);
+}
+
+.td {
+  position: relative;
+  max-width: 1280px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+.td button { font: inherit; color: inherit; }
+
+.td-only-d { display: none; }
+
+/* ------------------------------------------------------------------ boot */
+.td-boot {
+  display: grid;
+  place-items: center;
+  gap: 16px;
+  min-height: 70vh;
+  padding: 40px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------ header */
+.td-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.td-head-l, .td-head-r { display: flex; align-items: center; gap: 10px; }
+.td-head-r { gap: 8px; }
+
+.td-back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 20px;
+  text-decoration: none;
+}
+.td-back:hover { background: var(--surface-3); text-decoration: none; }
+
+.td-avatar, .td-brand, .td-head-sep, .td-who { display: none; }
+
+.td-chip-trading {
+  padding: 6px 9px;
+  border: 1px solid var(--td-teal-line);
+  border-radius: 6px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font: 800 11px/1 var(--td-mono);
+  letter-spacing: .1em;
+}
+
+.td-dots {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+.td-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+.td-dots i.on { background: var(--teal); }
+
+.td-stage {
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font: 700 12px/1 var(--font);
+  white-space: nowrap;
+}
+
+.td-signout {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.td-signout:hover { background: var(--surface-3); }
+
+/* ------------------------------------------------------------------ stats */
+.td-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+
+.td-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 4px;
+}
+.td-stat-tickets, .td-stat-stillin { padding: 12px; }
+.td-stat-tickets { gap: 8px; border-right: 1px solid var(--line); }
+
+.td-stat-prices {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+}
+.td-stat-prices .td-stat + .td-stat { border-left: 1px solid var(--line); }
+
+.td-k { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--muted); }
+.td-sub { font-size: 10px; color: var(--muted); }
+.td-num { font: 800 20px/1.3 var(--td-mono); }
+.td-stat-stillin .td-num { font-size: 40px; line-height: 1.05; }
+.td-teal { color: var(--teal); }
+.td-green { color: var(--green); }
+.td-red { color: var(--danger); }
+
+/* ticket stubs */
+.td-stubs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.td-stub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 48px;
+  height: 56px;
+  border: 2px solid var(--line-strong);
+  border-radius: 6px;
+}
+.td-stub b { font: 800 14px/1 var(--td-mono); }
+.td-stub span { font: 700 8px/1 var(--td-mono); letter-spacing: .06em; }
+.td-stub.in { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+.td-stub.sold { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); }
+.td-stub.out { border-color: var(--line-strong); background: transparent; color: var(--muted-2); }
+.td-stub.out b { text-decoration: line-through; }
+
+/* ------------------------------------------------------------------ book + feed */
+.td-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 8px;
+}
+
+.td-book {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+}
+.td-book-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+.td-book-head-sell, .td-book-head-buy { display: none; }
+
+.td-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px 10px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.td-row:last-child { border-bottom: 0; }
+.td-row-main { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.td-row-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+
+.td-name {
+  overflow: hidden;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.td-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
+.td-chip {
+  padding: 3px 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font: 700 10px/1 var(--td-mono);
+}
+.td-chip.in { border-color: var(--green-line); color: var(--green); }
+.td-chip.out { border-color: var(--line-strong); color: var(--muted-2); text-decoration: line-through; }
+
+.td-act { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.td-sell, .td-buy {
+  height: 40px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  color: #fff;
+  font: 800 14px/1 var(--td-mono);
+  cursor: pointer;
+}
+.td-sell { background: var(--danger); }
+.td-sell:hover { background: var(--td-danger-hi); }
+.td-buy { background: var(--green); }
+.td-buy:hover { background: var(--td-green-hi); }
+/* Teal ring marks the best bid and the lowest ask in the book. */
+.td-sell.best, .td-buy.best { border-color: var(--teal); }
+.td-sell:disabled, .td-buy:disabled {
+  background: var(--line);
+  color: var(--muted-2);
+  cursor: not-allowed;
+}
+
+.td-sent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 5px;
+  color: var(--muted);
+  font: 700 11px/1 var(--td-mono);
+  letter-spacing: .06em;
+}
+
+.td-warn { font-size: 10px; line-height: 1.35; color: var(--gold-ink); }
+
+.td-feed { display: flex; flex-direction: column; min-width: 0; }
+.td-feed-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+.td-feed-list { display: flex; flex-direction: column; gap: 6px; padding: 6px 4px 0; }
+
+.td-f { padding: 10px; border-left: 4px solid var(--line-strong); }
+.td-f.req { border-left-color: var(--gold); background: var(--td-gold-wash); }
+.td-f.req .td-f-text { color: var(--gold-ink); font-weight: 800; font-size: 13px; line-height: 1.35; }
+.td-f.sent {
+  border-left-color: var(--line-strong);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.td-f.trade {
+  border-left-color: var(--gold);
+  background: var(--gold-soft);
+  color: var(--gold-ink);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.td-review {
+  width: 100%;
+  height: 34px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--gold);
+  color: var(--td-gold-ink-strong);
+  font: 800 12px/1 var(--td-mono);
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.td-review:hover { background: var(--gold-hi); }
+
+/* ------------------------------------------------------------------ your market */
+.td-market {
+  display: grid;
+  grid-template-areas: "title" "price" "ctl" "offer";
+  gap: 12px;
+  padding: 14px 14px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.td-m-title {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.td-m-price { grid-area: price; }
+.td-m-ctl { grid-area: ctl; }
+.td-m-offer { grid-area: offer; }
+.td-note { grid-area: note; display: none; }
+
+.td-m-k { color: var(--text-2); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+
+.td-open {
+  padding: 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 800 10px/1 var(--td-mono);
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.td-open.on { border-color: var(--green-line); color: var(--green); }
+
+.td-m-price {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+}
+.td-bidask { text-align: center; }
+.td-bidask .td-k { font-size: 11px; letter-spacing: 0; color: var(--text-2); }
+.td-bid, .td-ask { font: 800 34px/1.1 var(--td-mono); }
+.td-bid { color: var(--green); }
+.td-ask { color: var(--danger); }
+
+.td-slider { padding-bottom: 6px; }
+.td-track { position: relative; height: 12px; border-radius: 99px; background: var(--surface-3); }
+.td-fill { position: absolute; top: 0; bottom: 0; background: var(--td-teal-line); }
+.td-knob {
+  position: absolute;
+  top: -4px;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 1px 3px rgba(20, 32, 43, .25);
+}
+.td-knob.lo { margin-left: -10px; }
+.td-knob.hi { margin-right: -10px; }
+.td-spread {
+  margin-top: 10px;
+  color: var(--teal);
+  font: 700 12px/1 var(--td-mono);
+  letter-spacing: .06em;
+  text-align: center;
+}
+
+.td-m-ctl { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.td-step { display: flex; align-items: center; gap: 6px; }
+.td-step button {
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.td-step button:hover { background: var(--surface-3); }
+.td-mid { width: 44px; font: 800 17px/1 var(--td-mono); text-align: center; }
+
+.td-spreads {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+.td-spreads button {
+  width: 46px;
+  height: 40px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  font: 800 14px/1 var(--td-mono);
+  cursor: pointer;
+}
+.td-spreads button.on { background: var(--teal); color: #fff; }
+
+.td-m-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.td-offer-k { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.td-offer {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: 800 12px/1 var(--td-mono);
+  cursor: pointer;
+}
+.td-offer.on { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
+
+/* 3c — no still-in ticket, so there is no market to make. */
+.td-market.empty { grid-template-areas: "title" "price" "note"; }
+.td-market.empty .td-m-price { opacity: .3; pointer-events: none; }
+.td-market.empty .td-open,
+.td-market.empty .td-m-ctl,
+.td-market.empty .td-m-offer { display: none; }
+.td-market.empty .td-note { display: block; }
+.td-note {
+  padding: 12px 14px;
+  border-left: 4px solid var(--line-strong);
+  background: var(--surface-3);
+}
+.td-note b { font-size: 15px; }
+.td-note span { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+
+/* ------------------------------------------------------------------ toast */
+.td-toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 16px;
+  z-index: 40;
+  padding: 12px 14px;
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  background: var(--navy);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(20, 32, 43, .25);
+}
+
+/* ------------------------------------------------------------------ modal */
+.td-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(20, 32, 43, .38);
+}
+/* An author `display` beats the UA's [hidden] rule, so restate it here. */
+.td-scrim[hidden], .td-toast[hidden], .td[hidden], .td-boot[hidden] { display: none; }
+.td-sheet {
+  width: 100%;
+  max-height: 92vh;
+  overflow: auto;
+  padding: 18px 16px 20px;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 16px 16px 0 0;
+  background: #fff;
+}
+.td-grab { width: 40px; height: 4px; margin: 0 auto 14px; border-radius: 99px; background: var(--line-strong); }
+
+.td-m-kicker { font: 800 11px/1 var(--td-mono); letter-spacing: .1em; }
+.td-m-h { margin-top: 6px; font-weight: 800; font-size: 22px; }
+.td-m-sub { margin-top: 2px; color: var(--muted); font-size: 13px; }
+.td-m-pick { margin: 16px 0 8px; color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+
+.td-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.td-choice {
+  height: 54px;
+  border: 2px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  font: 800 18px/1 var(--td-mono);
+  cursor: pointer;
+}
+.td-choice.on { border-color: var(--teal); background: var(--teal-soft); }
+/* The approve sheet shows the requested ticket as a fact, not a choice. */
+.td-choice.fixed { display: grid; place-items: center; cursor: default; }
+.td-choice.gold { border-color: var(--gold); background: var(--td-gold-wash); }
+
+.td-amount-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 6px;
+}
+.td-amount-lbl { color: var(--text-2); font-size: 13px; }
+.td-amount { font: 800 26px/1 var(--td-mono); }
+.td-m-fine { margin-top: 10px; color: var(--muted); font-size: 12px; }
+
+.td-m-acts { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; margin-top: 14px; }
+.td-m-cancel {
+  height: 50px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: transparent;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.td-m-cancel:hover { background: var(--surface-3); }
+.td-m-go {
+  height: 50px;
+  border: 0;
+  border-radius: 6px;
+  font: 800 14px/1 var(--td-mono);
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.td-m-go.off { background: var(--line); color: var(--muted-2); cursor: not-allowed; }
+
+.td-accent-buy { color: var(--green); }
+.td-accent-sell { color: var(--danger); }
+.td-accent-approve { color: var(--gold); }
+.td-go-buy { background: var(--green); color: #fff; }
+.td-go-sell { background: var(--danger); color: #fff; }
+.td-go-approve { background: var(--gold); color: var(--td-gold-ink-strong); }
+
+.td :focus-visible, .td-sheet :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+/* The sheet takes focus only to move the caret into the dialog, so it should
+ * not draw a ring of its own. Must follow the rule above to win the cascade. */
+.td-sheet:focus, .td-sheet:focus-visible { outline: none; }
+
+/* ================================================================== 3b desktop */
+@media (min-width: 860px) {
+  .td-only-d { display: inline; }
+  .td-only-m { display: none; }
+
+  .td-head { padding: 16px 28px; }
+  .td-head-l { gap: 14px; }
+  .td-head-r { gap: 10px; }
+  .td-back { width: 44px; height: 44px; }
+  .td-avatar { display: grid; }
+  .td-brand { display: inline; font-weight: 700; font-size: 16px; }
+  .td-who { display: inline; font-weight: 700; font-size: 14px; }
+  .td-head-sep { display: inline-block; width: 1px; height: 26px; margin: 0 6px; background: var(--line); }
+  .td-dots { padding: 10px 12px; }
+  .td-stage { padding: 10px 12px; font-size: 13px; }
+
+  .td-stats { grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)); }
+  /* The three price tiles become siblings of the first two on one row. */
+  .td-stat-prices { display: contents; }
+  .td-stat { padding: 14px; border-right: 1px solid var(--line); }
+  .td-stat:last-child { border-right: 0; }
+  .td-stat-prices .td-stat + .td-stat { border-left: 0; }
+  .td-stat-tickets { flex-direction: row; gap: 16px; }
+  .td-stat-stillin .td-num { line-height: 1.2; }
+  .td-k { font-size: 11px; }
+  .td-num { font-size: 32px; line-height: 1.4; }
+  .td-sub { display: none; }
+
+  .td-stub { width: 58px; height: 64px; gap: 3px; }
+  .td-stub b { font-size: 17px; }
+  .td-stub span { font-size: 9px; }
+
+  .td-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px; }
+
+  .td-book-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px 120px;
+    gap: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .td-book-head-sell, .td-book-head-buy { display: block; text-align: center; }
+  .td-book-head-sell { color: var(--danger); }
+  .td-book-head-buy { color: #1f6b33; }
+
+  .td-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 248px;
+    gap: 8px;
+    align-items: center;
+    padding: 14px 16px;
+  }
+  .td-row-top { justify-content: flex-start; gap: 10px; }
+  .td-name { font-size: 17px; }
+  .td-chips { justify-content: flex-start; }
+  .td-chip { padding: 4px 6px; font-size: 12px; }
+  .td-act { grid-template-columns: 120px 120px; gap: 8px; }
+  .td-sell, .td-buy { height: 46px; font-size: 16px; }
+  .td-sent { height: 46px; font-size: 12px; }
+  .td-warn { font-size: 12px; }
+
+  .td-feed-head { padding: 12px 16px; font-size: 12px; }
+  .td-feed-list { gap: 8px; padding: 8px 8px 0; }
+  .td-f { padding: 14px 16px; }
+  .td-f.req { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .td-f.req .td-f-text { font-size: 16px; }
+  .td-f.sent { font-size: 15px; }
+  .td-f.trade { font-size: 16px; }
+  .td-review { flex: none; width: auto; height: 38px; margin-top: 0; padding: 0 16px; }
+
+  .td-market {
+    grid-template-areas: "title price ctl" "offer price ctl";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px 32px;
+    align-items: center;
+    padding: 18px 28px 22px;
+  }
+  .td-m-title { justify-content: flex-start; }
+  .td-m-k { font-size: 12px; }
+  .td-m-price { gap: 20px; }
+  .td-bidask .td-k { font-size: 12px; }
+  .td-bid, .td-ask { font: 800 44px/1.05 var(--td-mono); }
+  .td-slider { padding-bottom: 8px; }
+  .td-knob { top: -5px; width: 22px; height: 22px; }
+  .td-knob.lo { margin-left: -11px; }
+  .td-knob.hi { margin-right: -11px; }
+  .td-spread { margin-top: 12px; font-size: 13px; }
+  .td-m-ctl { justify-content: flex-start; }
+  .td-spreads button { width: 48px; height: 42px; }
+
+  .td-market.empty { grid-template-areas: "title price note"; }
+
+  .td-toast {
+    left: 50%;
+    right: auto;
+    bottom: 28px;
+    transform: translateX(-50%);
+    font-size: 14px;
+  }
+
+  .td-scrim { align-items: flex-start; justify-content: center; padding-top: 140px; }
+  .td-sheet {
+    width: 440px;
+    padding: 22px;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+  }
+  .td-grab { display: none; }
+  .td-m-h { font-size: 24px; }
+  .td-m-sub { font-size: 14px; }
+  .td-m-pick { margin-top: 18px; }
+  .td-choice { height: 56px; }
+  .td-amount-lbl { font-size: 14px; }
+  .td-amount { font-size: 28px; }
+  .td-m-fine { font-size: 13px; }
+  .td-m-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  .td-m-cancel { height: 46px; padding: 0 18px; }
+  .td-m-go { height: 46px; padding: 0 20px; }
+}
+
+@keyframes td-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes td-rise-centred { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .td-toast { animation: td-rise .18s ease-out; }
+  @media (min-width: 860px) {
+    .td-toast { animation-name: td-rise-centred; }
+  }
+}

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f5f1">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Reverse Draw">
+  <title>Trading dashboard · Reverse Draw</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/app-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=JetBrains+Mono:wght@500;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css?v=16">
+  <link rel="stylesheet" href="/static/trading-dashboard.css?v=16">
+</head>
+<body class="td-body">
+  <div class="td" id="tdApp" hidden>
+    <header class="td-head">
+      <div class="td-head-l">
+        <a class="td-back" href="/trading" aria-label="Back to Trading">←</a>
+        <div class="avatar td-avatar" data-org-initials></div>
+        <span class="td-brand" data-org-name>Reverse Draw</span>
+        <span class="td-chip-trading">TRADING</span>
+      </div>
+      <div class="td-head-r">
+        <div class="td-dots" id="tdDots" aria-hidden="true"></div>
+        <span class="td-stage" id="tdStage"></span>
+        <span class="td-head-sep"></span>
+        <span class="td-who" id="tdWho"></span>
+        <button class="td-signout" id="tdSignout" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <section class="td-stats" aria-label="Your position">
+      <div class="td-stat td-stat-tickets">
+        <span class="td-k">YOUR TICKETS</span>
+        <div class="td-stubs" id="tdStubs"></div>
+      </div>
+      <div class="td-stat td-stat-stillin">
+        <span class="td-k">STILL IN</span>
+        <span class="td-num td-teal" id="tdStillIn">--</span>
+        <span class="td-sub" id="tdStillInOf"></span>
+      </div>
+      <div class="td-stat-prices">
+        <div class="td-stat">
+          <span class="td-k">BEST BID</span>
+          <span class="td-num td-green" id="tdBestBid">--</span>
+        </div>
+        <div class="td-stat">
+          <span class="td-k">LOW ASK</span>
+          <span class="td-num td-red" id="tdLowAsk">--</span>
+        </div>
+        <div class="td-stat">
+          <span class="td-k">LAST TRADE</span>
+          <span class="td-num" id="tdLastTrade">--</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="td-cols">
+      <div class="td-book">
+        <div class="td-book-head">
+          <span>LIVE ORDER BOOK</span>
+          <span class="td-book-head-sell">SELL TO · BID</span>
+          <span class="td-book-head-buy">BUY FROM · ASK</span>
+        </div>
+        <div id="tdBook"></div>
+      </div>
+      <div class="td-feed">
+        <div class="td-feed-head">TRANSACTION FEED</div>
+        <div class="td-feed-list" id="tdFeed"></div>
+      </div>
+    </section>
+
+    <section class="td-market" id="tdMarket"></section>
+
+    <div class="td-toast" id="tdToast" role="status" aria-live="polite" hidden></div>
+    <div class="td-scrim" id="tdScrim" hidden></div>
+  </div>
+
+  <div class="td-boot" id="tdBoot">
+    <p id="tdBootMsg">Loading your trading dashboard…</p>
+    <a class="btn primary" id="tdBootLink" href="/trading/login" hidden>Go to secure login</a>
+  </div>
+
+  <script src="/static/common.js?v=16"></script>
+  <script src="/static/pwa.js?v=16"></script>
+  <script src="/static/trading-markets.js?v=16"></script>
+  <script src="/static/trading-dashboard.js?v=16"></script>
+</body>
+</html>
