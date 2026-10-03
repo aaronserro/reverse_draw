@@ -7,8 +7,8 @@
  *
  * Breakpoint: the 3a mobile layout is the base, 3b takes over at 860px.
  *
- * The order book and feed row styles below are kept even though nothing renders
- * them yet: there is no market backend, so both panels show an empty state. */
+ * The order book, listing controls and feed render authoritative marketplace
+ * snapshots and remain usable at both layout sizes. */
 
 .td-body {
   --td-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -173,6 +173,66 @@
 .td-stub.out { border-color: var(--line-strong); background: transparent; color: var(--muted-2); }
 .td-stub.out b { text-decoration: line-through; }
 
+/* ----------------------------------------------------------- market tools */
+.td-market-tools {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.td-market-state {
+  margin-bottom: 10px;
+  color: var(--green);
+  font: 700 11px/1.4 var(--td-mono);
+  letter-spacing: .04em;
+}
+.td-market-state.error { color: var(--danger); }
+.td-list-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.td-list-form label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.td-list-form label > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.td-list-form select, .td-money-input {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.td-list-form select { padding: 0 10px; font: 700 14px var(--td-mono); }
+.td-money-input { display: flex; align-items: center; padding: 0 10px; }
+.td-money-input b { color: var(--muted); font: 700 14px var(--td-mono); }
+.td-money-input input {
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 700 14px var(--td-mono);
+}
+.td-list-submit {
+  grid-column: 1 / -1;
+  height: 42px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--teal);
+  color: #fff !important;
+  font: 800 12px/1 var(--td-mono) !important;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.td-list-submit:hover { filter: brightness(.9); }
+.td-list-submit:disabled, .td-list-form select:disabled, .td-money-input:has(input:disabled) {
+  opacity: .55;
+  cursor: not-allowed;
+}
+.td-list-hint { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
+
 /* ------------------------------------------------------------------ book + feed */
 .td-cols {
   display: grid;
@@ -226,7 +286,7 @@
 .td-chip.out { border-color: var(--line-strong); color: var(--muted-2); text-decoration: line-through; }
 
 .td-act { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.td-sell, .td-buy {
+.td-sell, .td-buy, .td-manage, .td-cancel {
   height: 40px;
   border: 2px solid transparent;
   border-radius: 5px;
@@ -238,9 +298,13 @@
 .td-sell:hover { background: var(--td-danger-hi); }
 .td-buy { background: var(--green); }
 .td-buy:hover { background: var(--td-green-hi); }
+.td-manage { background: var(--teal); }
+.td-manage:hover { filter: brightness(.9); }
+.td-cancel { border-color: var(--line-strong); background: var(--surface); color: var(--danger); }
+.td-cancel:hover { border-color: var(--danger); background: var(--danger-soft); }
 /* Teal ring marks the best bid and the lowest ask in the book. */
 .td-sell.best, .td-buy.best { border-color: var(--teal); }
-.td-sell:disabled, .td-buy:disabled {
+.td-sell:disabled, .td-buy:disabled, .td-manage:disabled, .td-cancel:disabled {
   background: var(--line);
   color: var(--muted-2);
   cursor: not-allowed;
@@ -291,6 +355,8 @@
   font-size: 13px;
   line-height: 1.35;
 }
+.td-f small, .td-f-text small { display: block; margin-top: 4px; font-size: 10px; font-weight: 500; }
+.td-request-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 .td-review {
   width: 100%;
@@ -305,6 +371,19 @@
   cursor: pointer;
 }
 .td-review:hover { background: var(--gold-hi); }
+.td-review:disabled, .td-decline:disabled, .td-withdraw:disabled { opacity: .55; cursor: not-allowed; }
+.td-decline, .td-withdraw {
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--danger);
+  font: 800 11px/1 var(--td-mono);
+  cursor: pointer;
+}
+.td-decline { width: 100%; margin-top: 8px; }
+.td-withdraw { display: block; margin-top: 8px; padding: 0 10px; }
+.td-decline:hover, .td-withdraw:hover { border-color: var(--danger); background: var(--danger-soft); }
 
 /* An author `display` beats the UA's [hidden] rule, so restate it here. */
 .td[hidden], .td-boot[hidden] { display: none; }
@@ -343,6 +422,12 @@
   .td-stub b { font-size: 17px; }
   .td-stub span { font-size: 9px; }
 
+  .td-market-tools { padding: 14px 28px; }
+  .td-market-state { margin-bottom: 8px; }
+  .td-list-form { grid-template-columns: minmax(180px, .8fr) minmax(180px, .8fr) 180px; align-items: end; }
+  .td-list-submit { grid-column: auto; }
+  .td-list-hint { margin-left: 0; }
+
   .td-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px; }
 
   .td-book-head {
@@ -368,7 +453,7 @@
   .td-chips { justify-content: flex-start; }
   .td-chip { padding: 4px 6px; font-size: 12px; }
   .td-act { grid-template-columns: 120px 120px; gap: 8px; }
-  .td-sell, .td-buy { height: 46px; font-size: 16px; }
+  .td-sell, .td-buy, .td-manage, .td-cancel { height: 46px; font-size: 14px; }
   .td-sent { height: 46px; font-size: 12px; }
   .td-warn { font-size: 12px; }
 
@@ -379,5 +464,6 @@
   .td-f.req .td-f-text { font-size: 16px; }
   .td-f.sent { font-size: 15px; }
   .td-f.trade { font-size: 16px; }
-  .td-review { flex: none; width: auto; height: 38px; margin-top: 0; padding: 0 16px; }
+  .td-request-actions { flex: none; grid-template-columns: auto auto; }
+  .td-review, .td-decline { width: auto; height: 38px; margin-top: 0; padding: 0 16px; }
 }

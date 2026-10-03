@@ -12,10 +12,32 @@ services:
         value: 3.12.7
       - key: DATABASE_URL     # Supabase "Session pooler" connection string
         sync: false
+      - key: RELATIONAL_STORE_ENABLED
+        value: "false"
+      - key: ACTIVE_DRAW_ID
+        value: ""
+      - key: REQUIRE_DATABASE_IN_PRODUCTION
+        value: "true"
+      - key: MAINTENANCE_MODE
+        value: "false"
+      - key: OPERATIONAL_STALE_JOB_SECONDS
+        value: "1800"
+      - key: TRADING_ENABLED
+        value: "false"
       - key: ADMIN_PASSWORD
         sync: false
       - key: SECRET_KEY
         generateValue: true
+      - key: PUBLIC_ACCESS_CODE
+        sync: false
+      - key: TRADING_MIN_PRICE_CENTS
+        value: "100"
+      - key: TRADING_MAX_PRICE_CENTS
+        value: "10000000"
+      - key: TRADING_REQUEST_TTL_SECONDS
+        value: "86400"
+      - key: TRADING_POLL_SECONDS
+        value: "5"
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST

@@ -8,6 +8,16 @@ Secrets (database URL, admin password) are NOT set here - they are
 environment variables in Render. See README.md.
 """
 
+import os
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
 # --- Announcement text -------------------------------------------------------
 ORG_NAME = "Reverse Draw"            # Name on the post header
 ORG_INITIALS = ""                    # Avatar letters; blank = first letters of ORG_NAME
@@ -92,3 +102,26 @@ COLOR_HIGHLIGHT = "#1e6fd9"          # Squares matching the search box
 
 # --- Admin -------------------------------------------------------------------
 ADMIN_SESSION_HOURS = 12             # How long an admin login lasts
+
+# --- Relational database migration ------------------------------------------
+# Leave relational mode disabled until the normalized tables have been
+# backfilled and reconciled. The draw ID is required only when this is enabled.
+RELATIONAL_STORE_ENABLED = _env_bool("RELATIONAL_STORE_ENABLED")
+ACTIVE_DRAW_ID = os.getenv("ACTIVE_DRAW_ID", "").strip()
+REQUIRE_DATABASE_IN_PRODUCTION = _env_bool(
+    "REQUIRE_DATABASE_IN_PRODUCTION", True
+)
+MAINTENANCE_MODE = _env_bool("MAINTENANCE_MODE")
+OPERATIONAL_STALE_JOB_SECONDS = int(
+    os.getenv("OPERATIONAL_STALE_JOB_SECONDS", str(30 * 60))
+)
+
+# --- Ticket marketplace ------------------------------------------------------
+# Marketplace tables may be deployed before the APIs are enabled.
+TRADING_ENABLED = _env_bool("TRADING_ENABLED")
+TRADING_MIN_PRICE_CENTS = int(os.getenv("TRADING_MIN_PRICE_CENTS", "100"))
+TRADING_MAX_PRICE_CENTS = int(os.getenv("TRADING_MAX_PRICE_CENTS", "10000000"))
+TRADING_REQUEST_TTL_SECONDS = int(
+    os.getenv("TRADING_REQUEST_TTL_SECONDS", str(24 * 60 * 60))
+)
+TRADING_POLL_SECONDS = int(os.getenv("TRADING_POLL_SECONDS", "5"))

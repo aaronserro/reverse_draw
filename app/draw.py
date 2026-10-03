@@ -42,6 +42,21 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def select_round_eliminations(
+    active_tickets: list[int],
+    survivor_target: int,
+    seed: int | str,
+) -> list[int]:
+    """Deterministically select the tickets removed by one round."""
+    pool = [int(ticket) for ticket in active_tickets]
+    if len(set(pool)) != len(pool):
+        raise DrawError("Active ticket numbers must be unique.")
+    if survivor_target <= 0 or survivor_target >= len(pool):
+        raise DrawError("The round survivor target is invalid.")
+    keep = set(random.Random(seed).sample(pool, survivor_target))
+    return sorted(ticket for ticket in pool if ticket not in keep)
+
+
 def current_schedule() -> dict:
     return {
         "total": int(config.TOTAL_TICKETS),
@@ -270,7 +285,7 @@ class ReverseDraw:
         pool = self.active()
         target = self.survivors[idx]
         seed = (config.RANDOM_SEED + idx) if config.RANDOM_SEED is not None else secrets.randbits(64)
-        keep = set(random.Random(seed).sample(pool, target))
+        eliminated = select_round_eliminations(pool, target, seed)
         rec = {
             "round": idx + 1,
             "label": self.labels[idx],
@@ -280,7 +295,7 @@ class ReverseDraw:
             "seed": str(seed),
             "started_with": len(pool),
             "survivors": target,
-            "eliminated": sorted(t for t in pool if t not in keep),
+            "eliminated": eliminated,
         }
         self._apply(rec)
         return rec

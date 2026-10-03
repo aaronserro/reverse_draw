@@ -15,6 +15,7 @@ import logging
 import os
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -68,6 +69,77 @@ class PostgresStore:
             conn.execute(
                 "UPDATE draw_state SET data = %s, updated_at = now() WHERE id = 1", (Jsonb(box.data),)
             )
+
+    def close(self) -> None:
+        self.pool.close()
+
+
+class RelationalDatabase:
+    """Pooled access to the normalized Supabase schema for one active draw."""
+
+    kind = "supabase-relational"
+
+    def __init__(
+        self,
+        url: str,
+        active_draw_id: str | uuid.UUID,
+        *,
+        required_schema_version: str = "008_rls",
+    ) -> None:
+        from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
+
+        self.active_draw_id = uuid.UUID(str(active_draw_id))
+        self.required_schema_version = required_schema_version
+        self.pool = ConnectionPool(
+            url,
+            min_size=1,
+            max_size=5,
+            open=True,
+            kwargs={
+                "prepare_threshold": None,
+                "row_factory": dict_row,
+            },
+        )
+        try:
+            self.verify_ready()
+        except BaseException:
+            self.pool.close()
+            raise
+
+    def verify_ready(self) -> None:
+        with self.pool.connection() as conn:
+            schema = conn.execute(
+                """
+                SELECT checksum
+                FROM schema_migrations
+                WHERE version = %s
+                """,
+                (self.required_schema_version,),
+            ).fetchone()
+            if schema is None:
+                raise RuntimeError(
+                    "The relational database schema is not current; "
+                    f"missing {self.required_schema_version}."
+                )
+            draw = conn.execute(
+                "SELECT id FROM draws WHERE id = %s",
+                (self.active_draw_id,),
+            ).fetchone()
+            if draw is None:
+                raise RuntimeError(
+                    f"ACTIVE_DRAW_ID {self.active_draw_id} does not exist."
+                )
+
+    @contextmanager
+    def connection(self):
+        with self.pool.connection() as conn:
+            yield conn
+
+    @contextmanager
+    def transaction(self):
+        with self.pool.connection() as conn, conn.transaction():
+            yield conn
 
     def close(self) -> None:
         self.pool.close()
@@ -131,3 +203,18 @@ def make_store() -> PostgresStore | SQLiteStore:
     path = os.getenv("SQLITE_PATH", "reverse_draw.db")
     log.warning("DATABASE_URL not set - using local SQLite file %s", path)
     return SQLiteStore(path)
+
+
+def make_relational_database(
+    url: str | None = None,
+    active_draw_id: str | uuid.UUID | None = None,
+) -> RelationalDatabase:
+    database_url = (url or os.getenv("DATABASE_URL", "")).strip()
+    draw_id = active_draw_id or os.getenv("ACTIVE_DRAW_ID", "").strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required for relational storage.")
+    if not draw_id:
+        raise RuntimeError(
+            "ACTIVE_DRAW_ID is required for relational storage."
+        )
+    return RelationalDatabase(database_url, draw_id)

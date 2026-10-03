@@ -40,9 +40,10 @@ except ImportError:
     pass
 
 from . import config
-from .db import make_store
+from .db import make_relational_database, make_store
 from .draw import DrawError, ReverseDraw, current_schedule, now_iso
 from .email_service import EmailSendError, build_email_client, email_config
+from .operations import request_log_record
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("reverse_draw")
@@ -57,24 +58,51 @@ PUBLIC_COOKIE = "rd_public"
 TRADER_COOKIE = "rd_trader"
 
 store = None
+relational_database = None
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global store
-    store = make_store()
+    global relational_database, store
+    if config.RELATIONAL_STORE_ENABLED:
+        relational_database = make_relational_database()
+        store = None
+        log.info(
+            "Using normalized relational storage for draw %s",
+            relational_database.active_draw_id,
+        )
+    else:
+        store = make_store()
+        if (
+            ON_RENDER
+            and config.REQUIRE_DATABASE_IN_PRODUCTION
+            and store.kind == "sqlite"
+        ):
+            store.close()
+            store = None
+            raise RuntimeError(
+                "DATABASE_URL is required in production; refusing SQLite."
+            )
     if not ADMIN_PASSWORD:
         log.warning("ADMIN_PASSWORD is not set - the admin page is disabled.")
     if PUBLIC_CODE and not re.fullmatch(r"\d{6}", PUBLIC_CODE):
         log.warning("PUBLIC_ACCESS_CODE should be exactly 6 digits (got %d characters).", len(PUBLIC_CODE))
     if not os.getenv("SECRET_KEY"):
         log.warning("SECRET_KEY is not set - logins will reset whenever the server restarts.")
-    if ON_RENDER and store.kind == "sqlite":
+    if store is not None and ON_RENDER and store.kind == "sqlite":
         log.error("Running on Render without DATABASE_URL - the draw will be LOST on every restart.")
-    with Mutation() as draw:
-        _sync_holder_credentials(draw)
-    yield
-    store.close()
+    if store is not None:
+        with Mutation() as draw:
+            _sync_holder_credentials(draw)
+    try:
+        yield
+    finally:
+        if relational_database is not None:
+            relational_database.close()
+            relational_database = None
+        if store is not None:
+            store.close()
+            store = None
 
 
 app = FastAPI(title="Reverse Draw", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -83,10 +111,29 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 @app.middleware("http")
 async def prevent_api_caching(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "no-store"
-    return response
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+    finally:
+        route = getattr(request.scope.get("route"), "path", "unmatched")
+        storage = (
+            "supabase-relational"
+            if config.RELATIONAL_STORE_ENABLED
+            else getattr(store, "kind", "initializing")
+        )
+        record = request_log_record(
+            method=request.method,
+            route=route,
+            status_code=status_code,
+            duration_ms=(time.perf_counter() - started) * 1000,
+            storage=storage,
+        )
+        log.info(json.dumps(record, separators=(",", ":")))
 
 
 # =============================================================================
@@ -244,9 +291,12 @@ def _holder_code_digest(holder_key: str, code: str) -> str:
 
 def _derive_holder_code(holder_key: str, credential: dict) -> str:
     """Reproduce a credential's code without persisting the readable value."""
+    credential_id = str(
+        credential.get("credential_external_id") or credential["id"]
+    )
     digest = hmac.new(
         SECRET_KEY.encode(),
-        f"holder-code-v1.{holder_key}.{credential['id']}".encode(),
+        f"holder-code-v1.{holder_key}.{credential_id}".encode(),
         hashlib.sha256,
     ).digest()
     return f"{int.from_bytes(digest[:8], 'big') % 1_000_000:06d}"
@@ -294,8 +344,10 @@ def _sync_holder_credentials(
 
 
 def _trader_token(credential: dict, seconds: int) -> str:
-    credential_id = str(credential["id"])
-    digest = str(credential["digest"])
+    credential_id = str(
+        credential.get("credential_external_id") or credential["id"]
+    )
+    digest = str(credential.get("code_digest") or credential["digest"])
     exp = int(time.time() + seconds)
     signature = _sign(f"trader.{credential_id}.{exp}.{digest}")
     return f"{credential_id}.{exp}.{signature}"
@@ -606,6 +658,19 @@ def get_state():
 admin = [Depends(require_admin)]
 
 
+def require_writable() -> None:
+    if config.MAINTENANCE_MODE:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The application is temporarily read-only for maintenance."
+            ),
+        )
+
+
+admin_write = [Depends(require_admin), Depends(require_writable)]
+
+
 @app.get("/api/admin/state", dependencies=admin)
 def admin_state():
     return admin_payload(load())
@@ -617,7 +682,7 @@ class ExpectRound(BaseModel):
     expected_rounds_done: int
 
 
-@app.post("/api/admin/rounds/next", dependencies=admin)
+@app.post("/api/admin/rounds/next", dependencies=admin_write)
 def run_next(body: ExpectRound):
     try:
         with Mutation() as d:
@@ -630,7 +695,7 @@ def run_next(body: ExpectRound):
         bad_request(e)
 
 
-@app.post("/api/admin/rounds/undo", dependencies=admin)
+@app.post("/api/admin/rounds/undo", dependencies=admin_write)
 def undo(body: ExpectRound):
     try:
         with Mutation() as d:
@@ -648,7 +713,7 @@ class ResetIn(BaseModel):
     confirm: str = Field(description='Must be "RESET"')
 
 
-@app.post("/api/admin/reset", dependencies=admin)
+@app.post("/api/admin/reset", dependencies=admin_write)
 def reset(body: ResetIn):
     if body.confirm != "RESET":
         bad_request(DrawError("Type RESET to confirm."))
@@ -663,7 +728,7 @@ class HoldersIn(BaseModel):
     mode: str = "replace"  # "replace" or "merge"
 
 
-@app.put("/api/admin/holders", dependencies=admin)
+@app.put("/api/admin/holders", dependencies=admin_write)
 def put_holders(body: HoldersIn):
     try:
         with Mutation() as d:
@@ -1167,7 +1232,7 @@ def get_holder_dataframe():
     return {"dataframe": _dataframe_payload(frame, metadata)}
 
 
-@app.post("/api/admin/holders/file", dependencies=admin)
+@app.post("/api/admin/holders/file", dependencies=admin_write)
 async def preview_holder_file(request: Request, filename: str):
     content_length = request.headers.get("content-length")
     too_large = (
@@ -1298,7 +1363,7 @@ def _process_notification_batch(batch_id: str, recipients: list[dict]) -> None:
         batch["completed_at"] = now_iso()
 
 
-@app.post("/api/admin/notifications/send-all", dependencies=admin)
+@app.post("/api/admin/notifications/send-all", dependencies=admin_write)
 def send_all_notifications(background_tasks: BackgroundTasks):
     batch_id = uuid.uuid4().hex
     with Mutation() as draw:
@@ -1339,7 +1404,7 @@ def send_all_notifications(background_tasks: BackgroundTasks):
     return {"batch": batch, "preview": _notification_preview(load())}
 
 
-@app.post("/api/admin/notifications/cancel", dependencies=admin)
+@app.post("/api/admin/notifications/cancel", dependencies=admin_write)
 def cancel_notification_batch():
     with Mutation() as draw:
         batch = next(
@@ -1363,7 +1428,7 @@ def cancel_notification_batch():
         return _notification_preview(draw)
 
 
-@app.post("/api/admin/notifications/clear-history", dependencies=admin)
+@app.post("/api/admin/notifications/clear-history", dependencies=admin_write)
 def clear_notification_history():
     with Mutation() as draw:
         _expire_stale_batches(draw)
@@ -1386,7 +1451,7 @@ class ResolveUnknownIn(BaseModel):
     delivered: bool
 
 
-@app.post("/api/admin/notifications/resolve-unknown", dependencies=admin)
+@app.post("/api/admin/notifications/resolve-unknown", dependencies=admin_write)
 def resolve_unknown_notification(body: ResolveUnknownIn):
     with Mutation() as draw:
         batch = next(
@@ -1440,7 +1505,7 @@ class UnassignIn(BaseModel):
     name: str = ""
 
 
-@app.post("/api/admin/holders/block", dependencies=admin)
+@app.post("/api/admin/holders/block", dependencies=admin_write)
 def assign_block(body: BlockIn):
     try:
         with Mutation() as d:
@@ -1454,7 +1519,7 @@ def assign_block(body: BlockIn):
         bad_request(e)
 
 
-@app.post("/api/admin/holders/unassign", dependencies=admin)
+@app.post("/api/admin/holders/unassign", dependencies=admin_write)
 def unassign_holders(body: UnassignIn):
     try:
         with Mutation() as draw:
@@ -1478,7 +1543,9 @@ class HolderCredentialIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
-@app.post("/api/admin/trading/credentials/generate", dependencies=admin)
+@app.post(
+    "/api/admin/trading/credentials/generate", dependencies=admin_write
+)
 def generate_missing_holder_credentials():
     with Mutation() as draw:
         generated = _sync_holder_credentials(draw)
@@ -1487,7 +1554,9 @@ def generate_missing_holder_credentials():
         return out
 
 
-@app.post("/api/admin/trading/credentials/reset", dependencies=admin)
+@app.post(
+    "/api/admin/trading/credentials/reset", dependencies=admin_write
+)
 def reset_holder_credential(body: HolderCredentialIn):
     holder_key = _person_key(body.name)
     with Mutation() as draw:
@@ -1518,3 +1587,88 @@ def export_tickets():
 @app.get("/api/admin/export/holders.csv", dependencies=admin)
 def export_holders():
     return csv_response(load().owners_csv(), "ticket_holders.csv")
+
+
+def _relational_database():
+    if relational_database is None:
+        raise RuntimeError("Relational storage has not started.")
+    return relational_database
+
+
+def _new_relational_credential(
+    holder_key: str, display_name: str
+):
+    from .services.holder_service import CredentialProvision
+
+    external_id = secrets.token_urlsafe(12)
+    credential = {"credential_external_id": external_id}
+    code = _derive_holder_code(holder_key, credential)
+    return CredentialProvision(
+        external_id=external_id,
+        digest=_holder_code_digest(holder_key, code),
+        readable_code=code,
+    )
+
+
+def _set_trader_cookie(response: Response, token: str, seconds: int) -> None:
+    response.set_cookie(
+        TRADER_COOKIE,
+        token,
+        max_age=seconds,
+        httponly=True,
+        secure=ON_RENDER,
+        samesite="strict",
+        path="/",
+    )
+
+
+def _clear_trader_cookie(response: Response) -> None:
+    response.delete_cookie(
+        TRADER_COOKIE,
+        path="/",
+        secure=ON_RENDER,
+        httponly=True,
+        samesite="strict",
+    )
+
+
+def _record_failure(key: str) -> None:
+    _failures.setdefault(key, []).append(time.time())
+
+
+def _clear_failure(key: str) -> None:
+    _failures.pop(key, None)
+
+
+if config.RELATIONAL_STORE_ENABLED:
+    from .relational_api import (
+        RelationalAPIContext,
+        create_relational_router,
+        install_relational_router,
+    )
+
+    install_relational_router(
+        app,
+        create_relational_router(
+            RelationalAPIContext(
+                database=_relational_database,
+                require_admin=require_admin,
+                require_viewer=require_viewer,
+                credential_factory=_new_relational_credential,
+                derive_holder_code=_derive_holder_code,
+                holder_code_digest=_holder_code_digest,
+                sign=_sign,
+                trader_token=_trader_token,
+                set_trader_cookie=_set_trader_cookie,
+                clear_trader_cookie=_clear_trader_cookie,
+                throttle=throttle,
+                client_ip=client_ip,
+                record_failure=_record_failure,
+                clear_failure=_clear_failure,
+                parse_upload=_read_upload_dataframe,
+                holders_from_frame=_holders_from_dataframe,
+                dataframe_payload=_dataframe_payload,
+                source_people=_source_people,
+            )
+        ),
+    )
