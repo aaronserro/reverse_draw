@@ -1,4 +1,4 @@
-const CACHE = "reverse-draw-shell-v18";
+const CACHE = "reverse-draw-shell-v19";
 const SHELL = [
   "/",
   "/admin",
@@ -40,7 +40,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+          if (response.ok) {
+            const cacheCopy = response.clone();
+            event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, cacheCopy)));
+          }
           return response;
         })
         .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
@@ -52,7 +55,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) caches.open(CACHE).then((cache) => cache.put(request, response.clone()));
+          if (response.ok) {
+            const cacheCopy = response.clone();
+            event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, cacheCopy)));
+          }
           return response;
         })
         .catch(() => caches.match(request))
