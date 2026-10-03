@@ -169,7 +169,7 @@
 .td-stub b { font: 800 14px/1 var(--td-mono); }
 .td-stub span { font: 700 8px/1 var(--td-mono); letter-spacing: .06em; }
 .td-stub.in { border-color: var(--green-line); background: var(--green-soft); color: var(--green); }
-.td-stub.sold { border-color: var(--teal); background: var(--teal-soft); color: var(--teal); }
+.td-stub.sold { border-color: var(--teal); background: var(--teal); color: #fff; }
 .td-stub.out { border-color: var(--line-strong); background: transparent; color: var(--muted-2); }
 .td-stub.out b { text-decoration: line-through; }
 
@@ -298,7 +298,7 @@
 .td-sell:hover { background: var(--td-danger-hi); }
 .td-buy { background: var(--green); }
 .td-buy:hover { background: var(--td-green-hi); }
-.td-manage { background: var(--teal); }
+.td-manage { background: var(--teal); color: #fff !important; }
 .td-manage:hover { filter: brightness(.9); }
 .td-cancel { border-color: var(--line-strong); background: var(--surface); color: var(--danger); }
 .td-cancel:hover { border-color: var(--danger); background: var(--danger-soft); }

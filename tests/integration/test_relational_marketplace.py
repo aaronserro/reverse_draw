@@ -377,6 +377,45 @@ class RelationalMarketplaceTests(unittest.TestCase):
                 expected_draw_version=2,
             )
 
+    def test_gift_card_winner_is_out_and_cannot_be_listed(self):
+        with self.database.transaction() as connection:
+            repositories = self._repositories(connection)
+            connection.execute(
+                """
+                INSERT INTO draw_stages (
+                    draw_id, stage_number, label, kind,
+                    prize, survivor_target
+                ) VALUES (%s, 3, 'Final Round', 'elimination', '', 1)
+                """,
+                (self.draw_id,),
+            )
+            for number in range(2, 6):
+                repositories.tickets.set_owner(
+                    number,
+                    self.seller["id"],
+                    reason="admin_assignment",
+                    actor_type="test",
+                )
+
+        DrawService(self.database).run_next_round(1, seed=991)
+        payload = DrawService(self.database).run_next_round(2, seed=992)
+        prize_round = payload["rounds"][-1]
+        winner = prize_round["selected_tickets"][0]
+
+        self.assertEqual(prize_round["kind"], "prize")
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            ticket = repositories.tickets.by_number(winner)
+            self.assertIsNotNone(ticket["eliminated_round_id"])
+
+        with self.assertRaisesRegex(ConflictError, "eliminated"):
+            self.service.upsert_listing(
+                self.seller["id"],
+                winner,
+                1000,
+                expected_draw_version=3,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -513,9 +513,13 @@ dialog.round-stage::backdrop { background: var(--bg); }
 .round-stage-close { flex: none; }
 .round-stage-main { flex: 1; min-height: 0; padding: 20px 24px; display: flex; }
 .round-stage-board-wrap {
-  position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center;
-  padding: 14px; overflow: auto; border-radius: var(--radius); background: var(--surface);
+  position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden;
+  border-radius: var(--radius); background: var(--surface);
   border: 1px solid var(--line); box-shadow: var(--shadow-lift);
+}
+.round-stage-board-scroll {
+  width: 100%; height: 100%; padding: 14px; overflow: auto;
+  display: flex; align-items: center;
 }
 .round-stage-board-wrap .board { width: 100%; margin: auto; }
 .round-stage-board-wrap .cell { font-size: clamp(8px, .8vw, 12px); padding: clamp(4px, .55vh, 8px) 0; }
