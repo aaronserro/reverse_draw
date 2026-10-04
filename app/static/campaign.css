@@ -1,0 +1,175 @@
+/* HOOPP / United Way campaign branding.
+ * Loaded only by participant-facing pages so the admin interface is unchanged. */
+
+.campaign-site,
+.td-body {
+  --bg: #f5f7f5;
+  --surface-2: #f8faf8;
+  --surface-3: #edf3ef;
+  --line: #dce4df;
+  --line-soft: #e8eeea;
+  --line-strong: #cbd7cf;
+  --text: #353638;
+  --text-2: #4e5052;
+  --muted: #62676a;
+  --muted-2: #858a8d;
+  --navy: #009944;
+  --navy-hi: #007f39;
+  --teal: #008f43;
+  --teal-soft: #e4f3eb;
+  --green: #009944;
+  --green-soft: #e5f4eb;
+  --green-line: #b8dec8;
+  --gold: #ffb511;
+  --gold-hi: #ffc641;
+  --gold-soft: #fff3d0;
+  --gold-ink: #634600;
+  --danger: #ed1c24;
+  --info: #0054a6;
+}
+
+.campaign-site .nav {
+  border-top: 5px solid #009944;
+  box-shadow: 0 2px 12px rgba(53, 54, 56, .06);
+}
+
+.campaign-site .nav-inner { height: 78px; }
+
+.hoopp-logo {
+  display: block;
+  width: 184px;
+  height: 54px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.hoopp-logo.compact {
+  width: 132px;
+  height: 42px;
+}
+
+.campaign-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  width: fit-content;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: var(--shadow);
+}
+
+.campaign-lockup img,
+.united-way-mark {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+}
+
+.campaign-lockup-copy {
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.campaign-lockup-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.campaign-lockup-copy b {
+  color: #0054a6;
+  font-size: 19px;
+}
+
+.campaign-site .landing-main {
+  position: relative;
+  background:
+    radial-gradient(circle at 8% 85%, rgba(0, 153, 68, .10), transparent 28%),
+    radial-gradient(circle at 58% 12%, rgba(255, 181, 17, .10), transparent 24%);
+}
+
+.campaign-site .landing-copy h1 { color: #3f4042; }
+.campaign-site .landing-copy h1 strong { color: #009944; }
+.campaign-site .code-card { border-top: 6px solid #009944; }
+.campaign-site .hero-band { background: linear-gradient(125deg, #006e35, #009944); }
+.campaign-site .hero-band.win { background: linear-gradient(125deg, #0054a6, #0072bc); }
+
+.campaign-strip {
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.campaign-strip-inner {
+  max-width: var(--page);
+  min-height: 82px;
+  margin: 0 auto;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.campaign-strip-copy { display: flex; flex-direction: column; }
+.campaign-strip-copy b { color: #3f4042; font-size: 17px; }
+.campaign-strip-copy span { color: var(--muted); font-size: 13px; }
+.campaign-strip-copy strong { color: #0054a6; }
+
+.campaign-site .trading-intro h1 { color: #3f4042; }
+.campaign-site .trading-card { border-top: 5px solid #009944; }
+
+.card-hoopp-logo {
+  width: 145px;
+  max-height: 58px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.trading-cause {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trading-cause img { width: 44px; height: 44px; object-fit: contain; }
+.trading-cause strong { color: #0054a6; }
+
+.td-body { border-top: 5px solid #009944; }
+.td-hoopp-logo { width: 126px; height: 42px; object-fit: contain; }
+.td-cause {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  color: #0054a6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+.td-cause img { width: 30px; height: 30px; object-fit: contain; }
+
+@media (min-width: 860px) {
+  .td-cause { display: flex; }
+}
+
+@media (max-width: 760px) {
+  .campaign-site .nav-inner { height: 68px; }
+  .hoopp-logo { width: 136px; height: 44px; }
+  .campaign-lockup { padding: 8px 10px; }
+  .campaign-lockup img { width: 46px; height: 46px; }
+  .campaign-lockup-copy b { font-size: 16px; }
+  .campaign-strip-inner { min-height: 70px; padding-inline: 18px; }
+  .united-way-mark { width: 48px; height: 48px; }
+  .campaign-strip-copy b { font-size: 15px; }
+  .campaign-strip-copy span { font-size: 12px; }
+  .card-hoopp-logo { width: 122px; }
+  .td-hoopp-logo { width: 104px; height: 36px; }
+}

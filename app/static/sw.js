@@ -1,4 +1,4 @@
-const CACHE = "reverse-draw-shell-v23";
+const CACHE = "reverse-draw-shell-v24";
 const SHELL = [
   "/",
   "/admin",
@@ -6,15 +6,19 @@ const SHELL = [
   "/trading/login",
   "/trading/dashboard",
   "/manifest.webmanifest",
-  "/static/styles.css?v=23",
+  "/static/styles.css?v=24",
+  "/static/campaign.css?v=24",
   "/static/common.js?v=20",
   "/static/public.js?v=23",
   "/static/admin.js?v=22",
   "/static/trading.js?v=20",
   "/static/trading-page.js?v=20",
-  "/static/trading-dashboard.css?v=20",
+  "/static/trading-dashboard.css?v=24",
   "/static/trading-dashboard.js?v=20",
   "/static/pwa.js?v=20",
+  "/static/hoopp-logo.svg",
+  "/static/hoopp-icon.svg",
+  "/static/united-way-logo.png",
   "/static/app-icon.svg",
   "/static/app-icon-maskable.svg"
 ];

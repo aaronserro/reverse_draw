@@ -1,25 +1,25 @@
 {
   "id": "/",
-  "name": "Reverse Draw",
-  "short_name": "Draw",
-  "description": "Follow the live Reverse Draw and check your ticket status.",
+  "name": "HOOPP Reverse Draw for United Way",
+  "short_name": "HOOPP Draw",
+  "description": "Follow the live HOOPP Reverse Draw supporting United Way, trade tickets, and check your status.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
-  "background_color": "#f6f5f1",
-  "theme_color": "#17324d",
+  "background_color": "#f5f7f5",
+  "theme_color": "#009944",
   "orientation": "any",
   "categories": ["entertainment", "utilities"],
   "icons": [
     {
-      "src": "/static/app-icon.svg",
+      "src": "/static/hoopp-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/static/app-icon-maskable.svg",
+      "src": "/static/hoopp-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "maskable"
@@ -30,13 +30,13 @@
       "name": "Public board",
       "short_name": "Board",
       "url": "/",
-      "icons": [{ "src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/static/hoopp-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
       "name": "Admin controls",
       "short_name": "Admin",
       "url": "/admin",
-      "icons": [{ "src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/static/hoopp-icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }

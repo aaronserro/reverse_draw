@@ -3,26 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f6f5f1">
+  <meta name="theme-color" content="#009944">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Reverse Draw">
-  <title>Ticket Login · Reverse Draw</title>
+  <meta name="apple-mobile-web-app-title" content="HOOPP Draw">
+  <title>Ticket Login · HOOPP Reverse Draw</title>
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/static/app-icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="/static/app-icon.svg">
+  <link rel="icon" href="/static/hoopp-icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/hoopp-icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=20">
+  <link rel="stylesheet" href="/static/styles.css?v=24">
+  <link rel="stylesheet" href="/static/campaign.css?v=24">
 </head>
-<body>
+<body class="campaign-site">
   <header class="nav" id="top">
     <div class="nav-inner">
       <a class="brand" href="/">
-        <div class="avatar" data-org-initials></div>
-        <div><div class="brand-name" data-org-name>Reverse Draw</div><div class="brand-sub">Ticket marketplace</div></div>
+        <img class="hoopp-logo" src="/static/hoopp-logo.svg" alt="HOOPP — Healthcare of Ontario Pension Plan">
       </a>
       <div class="nav-right">
         <nav class="nav-links" aria-label="Primary navigation">
@@ -45,7 +45,11 @@
 
   <main class="trading-main">
     <section class="trading-intro">
-      <div class="eyebrow">Ticket holder login</div>
+      <div class="campaign-lockup">
+        <img src="/static/united-way-logo.png" alt="United Way">
+        <div class="campaign-lockup-copy"><span>HOOPP proudly supports</span><b>United Way</b></div>
+      </div>
+      <div class="eyebrow">HOOPP ticket holder login</div>
       <h1>Access your tickets securely.</h1>
       <p class="lead">Sign in with the exact name on your ticket allocation and the private six-digit code provided by the draw organizer.</p>
       <div class="security-points" aria-label="Security information">
@@ -57,7 +61,7 @@
 
     <section class="card trading-card" id="traderLoginView">
       <div class="trading-card-head">
-        <div class="avatar large" data-org-initials></div>
+        <img class="card-hoopp-logo" src="/static/hoopp-logo.svg" alt="HOOPP">
         <div><h2>Ticket holder sign in</h2><p>Verify your identity and securely access the tickets assigned to you.</p></div>
       </div>
       <form id="traderLoginForm" autocomplete="on">

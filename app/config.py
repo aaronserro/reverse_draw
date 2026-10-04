@@ -19,11 +19,14 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 # --- Announcement text -------------------------------------------------------
-ORG_NAME = "Reverse Draw"            # Name on the post header
-ORG_INITIALS = ""                    # Avatar letters; blank = first letters of ORG_NAME
-POSTED_IN = "All Company"            # "Posted in ..." line
+ORG_NAME = "HOOPP Reverse Draw"      # Name on the post header
+ORG_INITIALS = "HR"                  # Text fallback when a logo cannot load
+POSTED_IN = "United Way Campaign"     # "Posted in ..." line
 PRIZE_TEXT = "$10,000 CASH"
-CLOSING_NOTE = "Finalists will be announced at the in-person Closing Ceremony."
+CLOSING_NOTE = (
+    "Finalists will be announced at the in-person HOOPP United Way "
+    "Closing Ceremony."
+)
 
 # --- Draw schedule -----------------------------------------------------------
 TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
@@ -95,12 +98,12 @@ PUBLIC_REFRESH_SECONDS = 10          # How often the public page checks for new 
 GRID_COLUMNS = 40                    # Squares per row
 HIGHLIGHT_LAST_ROUND = True          # Shade the latest eliminations darker
 
-COLOR_ACTIVE = "#2e8b47"             # Still in
+COLOR_ACTIVE = "#009944"             # Still in / HOOPP green
 COLOR_ELIMINATED = "#dcdfe0"         # Out in an earlier round
 COLOR_LAST_ROUND = "#8b949c"         # Out in the most recent round
-COLOR_WINNER = "#e8a900"             # Winner(s)
+COLOR_WINNER = "#ffb511"             # Winner(s) / United Way gold
 COLOR_PRIZE = "#7651a8"              # Gift-card winner
-COLOR_HIGHLIGHT = "#1e6fd9"          # Squares matching the search box
+COLOR_HIGHLIGHT = "#0054a6"          # Search match / United Way blue
 
 # --- Admin -------------------------------------------------------------------
 ADMIN_SESSION_HOURS = 12             # How long an admin login lasts
