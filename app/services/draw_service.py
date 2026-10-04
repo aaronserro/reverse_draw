@@ -143,23 +143,15 @@ class DrawService:
                 )
                 repositories.tickets.clear_eliminated_round(round_row["id"])
 
-            for ticket in tickets:
-                repositories.marketplace.invalidate_ticket(
-                    ticket["id"], timestamp
-                )
+            repositories.marketplace.invalidate_tickets(
+                [ticket["id"] for ticket in tickets], timestamp
+            )
 
             if not keep_holders:
-                for ticket in tickets:
-                    if ticket["owner_participant_id"] is not None:
-                        repositories.tickets.set_owner(
-                            ticket["ticket_number"],
-                            None,
-                            reason="admin_unassignment",
-                            actor_type="admin",
-                            actor_identifier=actor,
-                        )
-                for participant in repositories.participants.list():
-                    repositories.participants.deactivate(participant["id"])
+                repositories.tickets.clear_all_owners(
+                    actor_type="admin", actor_identifier=actor
+                )
+                repositories.participants.deactivate_all_credentials()
 
             # Settled trades are deliberately retained even when elevated
             # confirmation was supplied. Reversal requires a separate policy.

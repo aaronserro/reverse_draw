@@ -304,7 +304,23 @@
       body: `Every round will be cleared${keep ? " (ticket holders are kept)" : " and all ticket holders deleted"}. This can't be undone.`,
       confirmText: "Reset draw", danger: true, requireText: "RESET",
     });
-    if (ok) act(() => RD.api("/api/admin/reset", { method: "POST", body: { keep_holders: keep, confirm: "RESET" } }), "Draw reset");
+    if (!ok) return;
+    const button = $("reset");
+    button.disabled = true;
+    button.textContent = "Resetting…";
+    await act(
+      () => RD.api("/api/admin/reset", {
+        method: "POST",
+        body: {
+          expected_version: Number(state.version),
+          keep_holders: keep,
+          confirm: "RESET",
+        },
+      }),
+      "Draw reset"
+    );
+    button.disabled = false;
+    button.textContent = "Reset draw…";
   };
 
   $("holdersCsv").addEventListener("input", () => { csvDirty = true; });

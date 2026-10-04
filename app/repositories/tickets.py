@@ -183,6 +183,42 @@ class TicketRepository(Repository):
         )
         return True
 
+    def clear_all_owners(
+        self, *, actor_type: str, actor_identifier: str | None = None
+    ) -> int:
+        row = self.connection.execute(
+            """
+            WITH owned AS (
+                SELECT id, owner_participant_id
+                FROM tickets
+                WHERE draw_id = %s AND owner_participant_id IS NOT NULL
+                FOR UPDATE
+            ), recorded AS (
+                INSERT INTO ticket_ownership_events (
+                    draw_id, ticket_id, from_participant_id,
+                    to_participant_id, reason, actor_type, actor_identifier
+                )
+                SELECT %s, id, owner_participant_id, NULL,
+                       'admin_unassignment', %s, %s
+                FROM owned
+            ), cleared AS (
+                UPDATE tickets AS ticket
+                SET owner_participant_id = NULL
+                FROM owned
+                WHERE ticket.id = owned.id
+                RETURNING ticket.id
+            )
+            SELECT count(*)::integer AS cleared_count FROM cleared
+            """,
+            (
+                self.draw_id,
+                self.draw_id,
+                actor_type,
+                actor_identifier,
+            ),
+        ).fetchone()
+        return int(row["cleared_count"])
+
     def set_eliminated_round(
         self, ticket_ids: Iterable[UUID], round_id: UUID
     ) -> int:

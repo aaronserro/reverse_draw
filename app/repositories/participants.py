@@ -187,3 +187,17 @@ class ParticipantRepository(Repository):
             """,
             (participant_id,),
         )
+
+    def deactivate_all_credentials(self) -> int:
+        result = self.connection.execute(
+            """
+            UPDATE holder_credentials AS credential
+            SET active = false
+            FROM draw_participants AS participant
+            WHERE credential.participant_id = participant.id
+              AND participant.draw_id = %s
+              AND credential.active
+            """,
+            (self.draw_id,),
+        )
+        return result.rowcount

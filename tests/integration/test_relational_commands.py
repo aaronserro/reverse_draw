@@ -277,7 +277,9 @@ class RelationalCommandTests(unittest.TestCase):
             return self._credential_factory(key, display_name)
 
         service = HolderService(self.database, failing_factory)
-        with self.assertRaisesRegex(RuntimeError, "credential provider failed"):
+        with self.assertRaisesRegex(
+            RuntimeError, "credential provider failed"
+        ):
             service.apply_allocation(
                 {1: "Alice", 2: "Bob"},
                 mode="replace",
@@ -319,6 +321,12 @@ class RelationalCommandTests(unittest.TestCase):
                 alice["id"]
             )
             self.assertFalse(credential["active"])
+            unassignments = [
+                event
+                for event in repositories.tickets.ownership_events()
+                if event["reason"] == "admin_unassignment"
+            ]
+            self.assertEqual(len(unassignments), 2)
 
     def test_same_expected_version_allows_only_one_concurrent_round(self):
         def execute(seed):
