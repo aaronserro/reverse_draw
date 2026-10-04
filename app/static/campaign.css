@@ -121,6 +121,7 @@
 .campaign-strip-copy strong { color: #0054a6; }
 
 .campaign-ticket-cta {
+  min-width: 0;
   min-height: 52px;
   margin-left: auto;
   padding: 8px 14px;
@@ -218,14 +219,22 @@
   .hoopp-logo { width: 122px; height: 40px; }
   .campaign-strip-inner { min-height: 0; padding: 9px 12px; gap: 11px; }
   .united-way-mark { width: 42px; height: 42px; }
-  .campaign-strip-copy span { display: none; }
+  .campaign-strip-copy { display: none; }
   .campaign-lockup { max-width: 100%; gap: 9px; }
   .campaign-lockup-copy { min-width: 0; }
   .campaign-lockup-copy span { font-size: 10px; }
   .campaign-lockup-copy b { font-size: 15px; }
   .card-hoopp-logo { width: 112px; }
-  .campaign-ticket-cta { min-height: 46px; margin-left: auto; padding: 7px 9px; }
-  .campaign-ticket-cta strong { max-width: 82px; white-space: normal; }
+  .campaign-ticket-cta {
+    flex: 1;
+    min-height: 46px;
+    margin-left: 0;
+    padding: 7px 12px;
+    grid-template-columns: minmax(0, 1fr) 20px;
+    column-gap: 10px;
+  }
+  .campaign-ticket-cta strong { min-width: 0; white-space: nowrap; }
+  .campaign-ticket-cta i { width: 20px; text-align: right; }
 }
 
 @media (max-width: 360px) {
