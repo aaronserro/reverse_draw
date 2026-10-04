@@ -120,6 +120,40 @@
 .campaign-strip-copy span { color: var(--muted); font-size: 13px; }
 .campaign-strip-copy strong { color: #0054a6; }
 
+.campaign-ticket-cta {
+  min-height: 52px;
+  margin-left: auto;
+  padding: 8px 14px;
+  border: 2px solid #009944;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 14px;
+  background: #009944;
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 12px rgba(0, 153, 68, .18);
+}
+
+.campaign-ticket-cta:hover {
+  border-color: #007f39;
+  background: #007f39;
+  color: #fff;
+  text-decoration: none;
+}
+
+.campaign-ticket-cta span,
+.campaign-ticket-cta strong { grid-column: 1; }
+.campaign-ticket-cta span { font-size: 11px; line-height: 1.15; opacity: .9; }
+.campaign-ticket-cta strong { font-size: 15px; line-height: 1.2; white-space: nowrap; }
+.campaign-ticket-cta i {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  font-size: 24px;
+  font-style: normal;
+}
+
 .campaign-site .trading-intro h1 { color: #3f4042; }
 .campaign-site .trading-card { border-top: 5px solid #009944; }
 
@@ -171,6 +205,10 @@
   .campaign-strip-copy b { font-size: 15px; }
   .campaign-strip-copy span { font-size: 12px; }
   .campaign-strip-copy { min-width: 0; }
+  .campaign-ticket-cta { padding-inline: 11px; column-gap: 8px; }
+  .campaign-ticket-cta span { display: none; }
+  .campaign-ticket-cta strong { font-size: 13px; }
+  .campaign-ticket-cta i { grid-row: 1; font-size: 20px; }
   .card-hoopp-logo { width: 122px; }
   .td-hoopp-logo { width: 104px; height: 36px; }
   .trading-intro .campaign-lockup { margin-inline: auto; text-align: left; }
@@ -180,12 +218,14 @@
   .hoopp-logo { width: 122px; height: 40px; }
   .campaign-strip-inner { min-height: 0; padding: 9px 12px; gap: 11px; }
   .united-way-mark { width: 42px; height: 42px; }
-  .campaign-strip-copy span { line-height: 1.35; }
+  .campaign-strip-copy span { display: none; }
   .campaign-lockup { max-width: 100%; gap: 9px; }
   .campaign-lockup-copy { min-width: 0; }
   .campaign-lockup-copy span { font-size: 10px; }
   .campaign-lockup-copy b { font-size: 15px; }
   .card-hoopp-logo { width: 112px; }
+  .campaign-ticket-cta { min-height: 46px; margin-left: auto; padding: 7px 9px; }
+  .campaign-ticket-cta strong { max-width: 82px; white-space: normal; }
 }
 
 @media (max-width: 360px) {
