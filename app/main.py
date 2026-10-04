@@ -928,12 +928,20 @@ def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
                     break
         reserved[index] = taken
 
-    # Everyone else is filled from the lowest free numbers, still in holder
-    # order, so each person's tickets land together on the board.
-    available = (ticket for ticket in range(1, total + 1) if ticket not in assignments)
+    # Randomize every remaining number so orders without a fulfilled preference
+    # do not receive predictable sequential tickets. Preferred assignments are
+    # already excluded, and SystemRandom uses the operating system's secure
+    # randomness rather than draw-round configuration.
+    available = [
+        ticket
+        for ticket in range(1, total + 1)
+        if ticket not in assignments
+    ]
+    secrets.SystemRandom().shuffle(available)
+    available_tickets = iter(available)
     for index, person in people.iterrows():
         for _ in range(int(person["quantity"]) - reserved[index]):
-            assignments[next(available)] = person["name"]
+            assignments[next(available_tickets)] = person["name"]
 
     return pd.DataFrame(sorted(assignments.items()), columns=["ticket", "name"])
 
