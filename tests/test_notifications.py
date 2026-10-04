@@ -190,9 +190,13 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("Reply to this email", text_body)
         self.assertIn("042731", html_body)
         self.assertIn("042731", text_body)
-        self.assertIn("Live draw board access code", html_body)
+        self.assertIn("Website access code", html_body)
         self.assertIn("654321", html_body)
-        self.assertIn("Live draw board access code: 654321", text_body)
+        self.assertIn("Website access code: 654321", text_body)
+        self.assertIn("Your ticket holder access code", html_body)
+        self.assertIn("Your ticket holder access code: 042731", text_body)
+        self.assertIn("Website: https://draw.example.com", text_body)
+        self.assertIn("See your tickets now", html_body)
         self.assertIn("https://draw.example.com/trading/login", text_body)
 
     def test_template_omits_site_code_when_public_board_is_open(self):
@@ -204,8 +208,8 @@ class EmailTemplateTests(unittest.TestCase):
             trading_code="042731",
             site_access_code="",
         )
-        self.assertNotIn("Live draw board access code", html_body)
-        self.assertNotIn("Live draw board access code", text_body)
+        self.assertNotIn("Website access code", html_body)
+        self.assertNotIn("Website access code", text_body)
         self.assertIn("View the live draw board", text_body)
 
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):

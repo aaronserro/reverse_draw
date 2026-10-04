@@ -371,16 +371,16 @@ def render_ticket_email(
 <tr><td class="email-pad" style="padding:0 38px 28px">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#edf4fa" style="background-color:#edf4fa;border:1px solid #c8d9e8;border-radius:10px">
         <tr><td align="center" style="padding:20px;color:#17324d">
-            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Live draw board access code</div>
+            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Website access code</div>
             <div style="margin:7px 0 5px;font-family:Courier New,monospace;font-size:32px;line-height:38px;letter-spacing:7px;font-weight:700">{safe_site_access_code}</div>
-            <div style="font-size:12px;line-height:18px;color:#526b80">Use this shared code when you open the live draw board.</div>
+            <div style="font-size:12px;line-height:18px;color:#526b80">Use this shared code to enter the HOOPP Reverse Draw website.</div>
         </td></tr>
     </table>
 </td></tr>
 """
         site_access_text = (
-            f"Live draw board access code: {site_access_code}\n"
-            f"Open the live draw board: {app_url}\n\n"
+            f"Website access code: {site_access_code}\n"
+            f"Website: {app_url}\n\n"
         )
     new_chips = "".join(
         f'<span class="ticket-chip" style="display:inline-block;margin:5px;'
@@ -445,9 +445,9 @@ def render_ticket_email(
 <tr><td class="email-pad" style="padding:0 38px 28px">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#edf7f2" style="background-color:#edf7f2;border:1px solid #bfdfcd;border-radius:10px">
         <tr><td align="center" style="padding:20px;color:#174b32">
-            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Your private trading login code</div>
+            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Your ticket holder access code</div>
             <div style="margin:7px 0 5px;font-family:Courier New,monospace;font-size:32px;line-height:38px;letter-spacing:7px;font-weight:700">{safe_trading_code}</div>
-            <div style="font-size:12px;line-height:18px;color:#496b5a">Sign in with your full name. Keep this code private.</div>
+            <div style="font-size:12px;line-height:18px;color:#496b5a">Use this with your full name to see your tickets. This code is unique to you—keep it private.</div>
         </td></tr>
     </table>
 </td></tr>
@@ -462,10 +462,10 @@ def render_ticket_email(
 </td></tr>
 <tr><td class="email-pad" align="center" style="padding:0 38px 32px">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td bgcolor="#176b3a" style="background-color:#176b3a;border-radius:8px">
-        <a href="{safe_trading_url}" style="display:inline-block;padding:14px 24px;color:#ffffff;font-size:16px;line-height:20px;text-decoration:none;font-weight:700">Sign in to ticket trading&nbsp; →</a>
+        <a href="{safe_url}" style="display:inline-block;padding:14px 24px;color:#ffffff;font-size:16px;line-height:20px;text-decoration:none;font-weight:700">Open the HOOPP Reverse Draw website&nbsp; →</a>
     </td></tr></table>
-    <p style="margin:14px 0 0;font-size:12px;line-height:19px;color:#71808e">If the button does not work, copy this address:<br><a href="{safe_trading_url}" style="color:#315f83;word-break:break-all">{safe_trading_url}</a></p>
-    <p style="margin:10px 0 0;font-size:12px;line-height:19px"><a href="{safe_url}" style="color:#315f83">View the live draw board</a></p>
+    <p style="margin:14px 0 0;font-size:12px;line-height:19px;color:#71808e">Website link:<br><a href="{safe_url}" style="color:#315f83;word-break:break-all">{safe_url}</a></p>
+    <p style="margin:10px 0 0;font-size:13px;line-height:20px"><a href="{safe_trading_url}" style="color:#176b3a;font-weight:700">See your tickets now</a></p>
 </td></tr>
 <tr><td class="email-pad" bgcolor="#f7f8f9" style="padding:24px 38px;background-color:#f7f8f9;border-top:1px solid #e5e9ec;border-radius:0 0 14px 14px">
     <p style="margin:0 0 8px;font-size:13px;line-height:20px;color:#526271"><strong style="color:#283846">Why did I receive this?</strong><br>This confirmation was sent because tickets were allocated to your email address.</p>
@@ -484,9 +484,10 @@ def render_ticket_email(
         f"{', '.join(f'#{ticket}' for ticket in sorted(new_tickets))}\n\n"
         f"All current tickets: {all_numbers}\n"
         f"Grand prize: {config.PRIZE_TEXT}\n\n"
-        f"Your private trading login code: {trading_code}\n"
-        f"Sign in to ticket trading: {app_url}/trading/login\n"
-        "Use your full name and keep this code private.\n\n"
+        f"Your ticket holder access code: {trading_code}\n"
+        "Use this with your full name to see your tickets. This code is "
+        "unique to you—keep it private.\n"
+        f"See your tickets: {app_url}/trading/login\n\n"
         f"{site_access_text}"
         "This confirmation was sent because tickets were allocated to your "
         "email address. Reply to this email if anything looks incorrect.\n"
