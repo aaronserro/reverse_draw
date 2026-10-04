@@ -191,6 +191,8 @@
       }, 1000);
       setTimeout(() => {
         clearInterval(timer);
+        $("drawCount").textContent = "";
+        $("drawAnimation").querySelector(".draw-label").textContent = "Finalizing results…";
         resolve();
       }, 4000);
     });
@@ -242,6 +244,7 @@
       : "Randomly selecting the eliminated tickets.";
     $("roundStageBoard").classList.add("drawing");
     $("drawAnimation").classList.remove("hidden");
+    $("drawAnimation").querySelector(".draw-label").textContent = "Drawing tickets…";
 
     const request = RD.api("/api/admin/rounds/next", { method: "POST", body: { expected_rounds_done: i } });
     const [result] = await Promise.allSettled([request, drawingDelay()]);

@@ -142,27 +142,35 @@ class MarketplaceRepository(Repository):
         )
 
     def invalidate_ticket(self, ticket_id: UUID, decided_at: datetime) -> int:
+        return self.invalidate_tickets([ticket_id], decided_at)
+
+    def invalidate_tickets(
+        self, ticket_ids: list[UUID], decided_at: datetime
+    ) -> int:
+        ids = list(ticket_ids)
+        if not ids:
+            return 0
         rows = self.connection.execute(
             """
             UPDATE listings
             SET status = 'invalidated', closed_at = %s,
                 version = version + 1
-            WHERE draw_id = %s AND ticket_id = %s
+            WHERE draw_id = %s AND ticket_id = ANY(%s)
               AND status IN ('open', 'reserved')
             RETURNING id
             """,
-            (decided_at, self.draw_id, ticket_id),
+            (decided_at, self.draw_id, ids),
         ).fetchall()
         listing_ids = [row["id"] for row in rows]
-        for listing_id in listing_ids:
+        if listing_ids:
             self.connection.execute(
                 """
                 UPDATE purchase_requests
                 SET status = 'superseded', decided_at = %s
-                WHERE draw_id = %s AND listing_id = %s
+                WHERE draw_id = %s AND listing_id = ANY(%s)
                   AND status = 'pending'
                 """,
-                (decided_at, self.draw_id, listing_id),
+                (decided_at, self.draw_id, listing_ids),
             )
         return len(listing_ids)
 

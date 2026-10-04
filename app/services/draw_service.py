@@ -76,10 +76,9 @@ class DrawService:
             repositories.tickets.set_eliminated_round(
                 selected_ids, round_id
             )
-            for ticket in selected:
-                repositories.marketplace.invalidate_ticket(
-                    ticket["id"], timestamp
-                )
+            repositories.marketplace.invalidate_tickets(
+                selected_ids, timestamp
+            )
 
             repositories.draws.set_status(
                 "finished" if stage_number == len(stages) else "active"

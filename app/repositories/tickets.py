@@ -189,16 +189,15 @@ class TicketRepository(Repository):
         ids = list(ticket_ids)
         if not ids:
             return 0
-        with self.connection.cursor() as cursor:
-            cursor.executemany(
-                """
-                UPDATE tickets
-                SET eliminated_round_id = %s
-                WHERE id = %s AND draw_id = %s
-                """,
-                [(round_id, ticket_id, self.draw_id) for ticket_id in ids],
-            )
-        return len(ids)
+        result = self.connection.execute(
+            """
+            UPDATE tickets
+            SET eliminated_round_id = %s
+            WHERE draw_id = %s AND id = ANY(%s)
+            """,
+            (round_id, self.draw_id, ids),
+        )
+        return result.rowcount
 
     def clear_eliminated_round(self, round_id: UUID) -> int:
         result = self.connection.execute(

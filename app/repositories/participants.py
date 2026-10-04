@@ -111,6 +111,21 @@ class ParticipantRepository(Repository):
             (participant_id,),
         ).fetchone()
 
+    def credentials_for_participants(
+        self, participant_ids: list[UUID]
+    ) -> dict[UUID, dict[str, Any]]:
+        ids = list(participant_ids)
+        if not ids:
+            return {}
+        rows = self.connection.execute(
+            """
+            SELECT * FROM holder_credentials
+            WHERE participant_id = ANY(%s)
+            """,
+            (ids,),
+        ).fetchall()
+        return {row["participant_id"]: dict(row) for row in rows}
+
     def create_credential(
         self,
         participant_id: UUID,

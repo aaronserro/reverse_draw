@@ -37,10 +37,11 @@ def build_admin_payload(
     )
     undone = [row for row in all_rounds if row["status"] == "undone"]
     summary = repositories.tickets.holder_summary()
+    credentials = repositories.participants.credentials_for_participants(
+        [person["participant_id"] for person in summary]
+    )
     for person in summary:
-        credential = repositories.participants.credential_for_participant(
-            person["participant_id"]
-        )
+        credential = credentials.get(person["participant_id"])
         person["trading_ready"] = bool(credential and credential["active"])
         person["trading_code"] = (
             derive_code(person["holder_key"], credential)
