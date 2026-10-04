@@ -85,7 +85,9 @@ PUBLIC_SESSION_DAYS = 14             # How long a device stays "logged in"
 TRADER_SESSION_DAYS = 7              # Holder trading-login session length
 
 # --- Public page -------------------------------------------------------------
-PUBLIC_SHOW_HOLDER_NAMES = False     # True = public page can search/show holder names
+PUBLIC_SHOW_HOLDER_NAMES = _env_bool(
+    "PUBLIC_SHOW_HOLDER_NAMES", True
+)  # Let viewers find people and their tickets
 PUBLIC_SHOW_WINNER_NAME = True       # Show the winner's name in the announcement
 PUBLIC_REFRESH_SECONDS = 10          # How often the public page checks for new results
 

@@ -121,6 +121,16 @@
   // ================================================================ board page
   const lookup = $("lookup");
 
+  function renderHolderOptions() {
+    const options = $("holderOptions");
+    if (!options) return;
+    const names = [...new Set(Object.values(state.holders || {}))]
+      .sort((a, b) => a.localeCompare(b));
+    options.innerHTML = names
+      .map((name) => `<option value="${RD.esc(name)}"></option>`)
+      .join("");
+  }
+
   function renderLookup(fresh = null) {
     const hits = RD.search(lookup.value, state, state.holders);
     RD.renderBoard($("board"), cfg, state, { highlight: hits, holders: state.holders, fresh });
@@ -129,11 +139,35 @@
     if (!q) { out.innerHTML = ""; return; }
     RD.store.set("rd_ticket", q);
     if (!hits.size) {
-      out.innerHTML = `<div class="res none"><div class="res-icon">?</div><div><div class="res-title">No matching ticket</div>` +
-        `<div class="res-sub">Tickets run from 1 to ${RD.fmt(state.schedule.total)}.</div></div></div>`;
+      out.innerHTML = `<div class="res none"><div class="res-icon">?</div><div><div class="res-title">No matching ticket or person</div>` +
+        `<div class="res-sub">Try a ticket from 1 to ${RD.fmt(state.schedule.total)} or choose a name from the list.</div></div></div>`;
       return;
     }
     const list = [...hits].sort((a, b) => a - b);
+    if (!/^#?\d+$/.test(q) && state.holders) {
+      const people = new Map();
+      list.forEach((ticket) => {
+        const name = state.holders[ticket];
+        if (!name) return;
+        if (!people.has(name)) people.set(name, []);
+        people.get(name).push(ticket);
+      });
+      out.innerHTML = [...people.entries()].map(([name, tickets]) => {
+        const active = tickets.filter((ticket) =>
+          ["in", "win"].includes(RD.ticketStatus(state, ticket).cls));
+        const ticketList = tickets.map((ticket) => `#${ticket}`).join(", ");
+        const status = active.length === tickets.length
+          ? "All are still in"
+          : active.length
+            ? `${active.length} of ${tickets.length} still in`
+            : "No tickets still in";
+        return `<div class="res person"><div class="res-icon">${tickets.length}</div><div>` +
+          `<div class="res-title">${RD.esc(name)}</div>` +
+          `<div class="res-tickets">${RD.esc(ticketList)}</div>` +
+          `<div class="res-sub">${RD.esc(status)}</div></div></div>`;
+      }).join("");
+      return;
+    }
     out.innerHTML = list.slice(0, 20).map((t) => {
       const s = RD.ticketStatus(state, t);
       const who = state.holders && state.holders[t] ? ` · ${RD.esc(state.holders[t])}` : "";
@@ -218,6 +252,7 @@
             : `${last.label} results are in: ${RD.fmt(last.survivors)} tickets left`);
         }
         state = s;
+        renderHolderOptions();
         render(fresh);
       } else {
         $("updated").textContent = `Updated ${RD.fmtClock(new Date())}`;
@@ -256,9 +291,12 @@
   renderLanding();
   renderHowItWorks();
   if (cfg.show_holder_names) {
-    lookup.placeholder = "Ticket number or name";
+    lookup.placeholder = "Ticket number or person";
     lookup.setAttribute("inputmode", "text");
-    $("lookupHint").textContent = "Type your ticket number or name to find it on the board.";
+    $("lookupHint").textContent =
+      "Search by ticket number or choose a person to see all of their tickets.";
+  } else {
+    $("holderOptions").remove();
   }
   const saved = RD.store.get("rd_ticket");
   if (saved) lookup.value = saved;

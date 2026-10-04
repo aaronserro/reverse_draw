@@ -332,6 +332,10 @@ label.check input { width: 18px; height: 18px; accent-color: var(--teal); }
 .res.win { background: var(--gold-soft); border-color: #eddaa6; }
 .res.win .res-icon { background: var(--gold); color: #3d2c00; }
 .res.none .res-icon { background: var(--surface-3); color: var(--muted-2); }
+.res.person { align-items: flex-start; }
+.res.person .res-icon { background: var(--teal); color: #fff; font-size: 14px; }
+.res.person > div:last-child { min-width: 0; }
+.res-tickets { margin: 4px 0; color: var(--ink); font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .res + .res { margin-top: 8px; }
 
 /* ------------------------------------------------------------------ rounds list */

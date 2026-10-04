@@ -179,6 +179,7 @@ class EmailTemplateTests(unittest.TestCase):
             all_tickets=[7, 9],
             app_url="https://draw.example.com",
             trading_code="042731",
+            site_access_code="654321",
         )
         self.assertIn("ticket numbers", subject.lower())
         self.assertNotIn("<Jane>", html_body)
@@ -189,7 +190,23 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("Reply to this email", text_body)
         self.assertIn("042731", html_body)
         self.assertIn("042731", text_body)
+        self.assertIn("Live draw board access code", html_body)
+        self.assertIn("654321", html_body)
+        self.assertIn("Live draw board access code: 654321", text_body)
         self.assertIn("https://draw.example.com/trading/login", text_body)
+
+    def test_template_omits_site_code_when_public_board_is_open(self):
+        _, html_body, text_body = render_ticket_email(
+            name="Jane",
+            new_tickets=[7],
+            all_tickets=[7],
+            app_url="https://draw.example.com",
+            trading_code="042731",
+            site_access_code="",
+        )
+        self.assertNotIn("Live draw board access code", html_body)
+        self.assertNotIn("Live draw board access code", text_body)
+        self.assertIn("View the live draw board", text_body)
 
     def test_free_smtp_configuration_uses_authenticated_address_by_default(self):
         values = {

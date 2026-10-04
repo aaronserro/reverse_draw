@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=20">
+  <link rel="stylesheet" href="/static/styles.css?v=23">
 </head>
 <body>
 
@@ -134,9 +134,10 @@
 
     <div class="split">
       <section class="card lookup-card">
-        <h2>Am I still in?</h2>
-        <p class="muted small" id="lookupHint">Type your ticket number to find it on the board.</p>
-        <input class="input" type="text" id="lookup" inputmode="numeric" autocomplete="off" placeholder="Enter your ticket number">
+        <h2>Find tickets</h2>
+        <p class="muted small" id="lookupHint">Type a ticket number to find it on the board.</p>
+        <input class="input" type="text" id="lookup" inputmode="numeric" autocomplete="off" list="holderOptions" placeholder="Enter a ticket number">
+        <datalist id="holderOptions"></datalist>
         <div class="lookup-result" id="lookupResult"></div>
       </section>
 
@@ -166,6 +167,6 @@
 
 <script src="/static/common.js?v=20"></script>
 <script src="/static/pwa.js?v=20"></script>
-<script src="/static/public.js?v=20"></script>
+<script src="/static/public.js?v=23"></script>
 </body>
 </html>

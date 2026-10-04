@@ -350,13 +350,38 @@ def render_ticket_email(
     all_tickets: list[int],
     app_url: str,
     trading_code: str = "",
+    site_access_code: str | None = None,
 ) -> tuple[str, str, str]:
+    if site_access_code is None:
+        site_access_code = (
+            os.getenv("PUBLIC_ACCESS_CODE")
+            or str(config.PUBLIC_ACCESS_CODE or "")
+        ).strip()
     safe_name = html.escape(name)
     safe_org = html.escape(config.ORG_NAME)
     safe_prize = html.escape(config.PRIZE_TEXT)
     safe_url = html.escape(app_url, quote=True)
     safe_trading_url = html.escape(f"{app_url}/trading/login", quote=True)
     safe_trading_code = html.escape(trading_code)
+    safe_site_access_code = html.escape(site_access_code)
+    site_access_section = ""
+    site_access_text = f"View the live draw board: {app_url}\n\n"
+    if site_access_code:
+        site_access_section = f"""
+<tr><td class="email-pad" style="padding:0 38px 28px">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#edf4fa" style="background-color:#edf4fa;border:1px solid #c8d9e8;border-radius:10px">
+        <tr><td align="center" style="padding:20px;color:#17324d">
+            <div style="font-size:12px;line-height:18px;letter-spacing:1.3px;text-transform:uppercase;font-weight:700">Live draw board access code</div>
+            <div style="margin:7px 0 5px;font-family:Courier New,monospace;font-size:32px;line-height:38px;letter-spacing:7px;font-weight:700">{safe_site_access_code}</div>
+            <div style="font-size:12px;line-height:18px;color:#526b80">Use this shared code when you open the live draw board.</div>
+        </td></tr>
+    </table>
+</td></tr>
+"""
+        site_access_text = (
+            f"Live draw board access code: {site_access_code}\n"
+            f"Open the live draw board: {app_url}\n\n"
+        )
     new_chips = "".join(
         f'<span class="ticket-chip" style="display:inline-block;margin:5px;'
         f'padding:12px 16px;border:1px solid #b7dfc2;border-radius:8px;'
@@ -426,6 +451,7 @@ def render_ticket_email(
         </td></tr>
     </table>
 </td></tr>
+{site_access_section}
 <tr><td class="email-pad" style="padding:0 38px 28px">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#fff5d9" style="background-color:#fff5d9;border-left:5px solid #e9ad24;border-radius:8px">
         <tr><td style="padding:18px 20px;color:#614900">
@@ -461,7 +487,7 @@ def render_ticket_email(
         f"Your private trading login code: {trading_code}\n"
         f"Sign in to ticket trading: {app_url}/trading/login\n"
         "Use your full name and keep this code private.\n\n"
-        f"View the live draw board: {app_url}\n\n"
+        f"{site_access_text}"
         "This confirmation was sent because tickets were allocated to your "
         "email address. Reply to this email if anything looks incorrect.\n"
     )
