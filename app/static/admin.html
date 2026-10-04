@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=20">
+  <link rel="stylesheet" href="/static/styles.css?v=25">
 </head>
 <body>
 
@@ -38,15 +38,15 @@
 <div class="hidden" id="appView">
   <header class="nav">
     <div class="nav-inner">
-      <div class="brand">
+      <div class="brand admin-app-brand">
         <div class="avatar" data-org-initials></div>
         <div><div class="brand-name"><span data-org-name></span> <span class="badge admin">Admin</span></div>
           <div class="brand-sub" id="storageInfo"></div></div>
       </div>
       <div class="nav-right">
         <button class="btn ghost sm hidden" type="button" data-install-app>Install app</button>
-        <a class="btn sm" href="/" target="_blank" rel="noopener">Public ↗</a>
-        <button class="btn ghost sm" id="logout">Sign out</button>
+        <a class="btn sm admin-mobile-action" href="/" target="_blank" rel="noopener" aria-label="Open public board" title="Open public board">Public ↗</a>
+        <button class="btn ghost sm admin-mobile-action" id="logout" aria-label="Sign out" title="Sign out">Sign out</button>
       </div>
     </div>
   </header>
@@ -107,7 +107,7 @@
           </div>
           <input class="input" type="text" id="search" autocomplete="off" placeholder="Search a name or ticket number (e.g. Jane or 417)">
           <div class="search-results" id="searchResult"></div>
-          <div class="board-wrap" style="margin-top:12px"><div class="board" id="board"></div></div>
+          <div class="board-wrap" style="margin-top:12px" tabindex="0" role="region" aria-label="Scrollable ticket board"><div class="board" id="board"></div></div>
         </section>
 
         <section class="card">
@@ -223,7 +223,7 @@
   </div>
 </dialog>
 
-<script src="/static/common.js?v=20"></script>
+<script src="/static/common.js?v=25"></script>
 <script src="/static/pwa.js?v=20"></script>
 <script src="/static/admin.js?v=22"></script>
 </body>

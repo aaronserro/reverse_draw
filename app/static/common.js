@@ -234,6 +234,7 @@ RD.store = {
       toggle.setAttribute("aria-expanded", String(open));
       toggle.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
       shelf.hidden = !open;
+      if (open) shelf.querySelector("a")?.focus();
     };
     const isOpen = () => toggle.getAttribute("aria-expanded") === "true";
 

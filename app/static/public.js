@@ -73,7 +73,7 @@
     $("gateView").classList.remove("hidden");
     boxes.forEach((b) => (b.value = ""));
     syncOtp();
-    boxes[0].focus();
+    if (window.matchMedia("(min-width: 801px)").matches) boxes[0].focus();
   }
 
   // ================================================================ landing copy

@@ -59,7 +59,9 @@
     $("traderLoginError").textContent = "";
     submitting = false;
     syncForm();
-    setTimeout(() => $("traderName").focus(), 0);
+    if (window.matchMedia("(min-width: 801px)").matches) {
+      setTimeout(() => $("traderName").focus(), 0);
+    }
   }
 
   function showAccount(session) {

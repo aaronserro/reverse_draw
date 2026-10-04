@@ -236,7 +236,7 @@
 /* ------------------------------------------------------------------ book + feed */
 .td-cols {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 10px 8px;
 }
@@ -389,6 +389,32 @@
 .td[hidden], .td-boot[hidden] { display: none; }
 
 .td :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+@media (max-width: 500px) {
+  .td-head { align-items: stretch; padding: 10px 10px 12px; }
+  .td-head-l, .td-head-r { width: 100%; min-width: 0; }
+  .td-head-l { justify-content: flex-start; }
+  .td-head-r { justify-content: space-between; gap: 5px; }
+  .td-back { width: 40px; height: 40px; }
+  .td-hoopp-logo { width: 96px; }
+  .td-chip-trading { margin-left: auto; }
+  .td-dots { min-width: 0; padding: 7px; gap: 4px; }
+  .td-dots i { width: 7px; height: 7px; }
+  .td-stage { padding: 8px; font-size: 11px; }
+  .td-signout { padding: 0 9px; }
+  .td-list-form { grid-template-columns: minmax(0, 1fr); }
+  .td-list-submit { grid-column: auto; }
+  .td-cols { gap: 14px; padding-inline: 10px; }
+}
+
+@media (display-mode: standalone) {
+  .td-body { padding-bottom: env(safe-area-inset-bottom); }
+  .td-head {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-top: calc(16px + env(safe-area-inset-top));
+  }
+}
 
 /* ================================================================== 3b desktop */
 @media (min-width: 860px) {
