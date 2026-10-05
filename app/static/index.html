@@ -134,6 +134,21 @@
       <div class="stat"><div class="k">Stages complete</div><div class="v" id="statRound">–</div></div>
     </div>
 
+    <div class="split">
+      <section class="card lookup-card">
+        <h2>Find tickets</h2>
+        <p class="muted small" id="lookupHint">Type a ticket number to find it on the board.</p>
+        <input class="input" type="text" id="lookup" inputmode="numeric" autocomplete="off" list="holderOptions" placeholder="Enter a ticket number">
+        <datalist id="holderOptions"></datalist>
+        <div class="lookup-result" id="lookupResult"></div>
+      </section>
+
+      <section class="card" id="rounds">
+        <h2>Draw stages</h2>
+        <ol class="rounds" id="history"></ol>
+      </section>
+    </div>
+
     <article class="card">
       <div class="post-head">
         <div class="post-by">
@@ -149,21 +164,6 @@
       <div class="board-wrap" tabindex="0" role="region" aria-label="Scrollable ticket board"><div class="board" id="board"></div></div>
       <div class="legend" id="legend"></div>
     </article>
-
-    <div class="split">
-      <section class="card lookup-card">
-        <h2>Find tickets</h2>
-        <p class="muted small" id="lookupHint">Type a ticket number to find it on the board.</p>
-        <input class="input" type="text" id="lookup" inputmode="numeric" autocomplete="off" list="holderOptions" placeholder="Enter a ticket number">
-        <datalist id="holderOptions"></datalist>
-        <div class="lookup-result" id="lookupResult"></div>
-      </section>
-
-      <section class="card" id="rounds">
-        <h2>Draw stages</h2>
-        <ol class="rounds" id="history"></ol>
-      </section>
-    </div>
 
     <section class="card" id="how">
       <h2>How it works</h2>
