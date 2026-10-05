@@ -197,13 +197,17 @@
     const s = state.schedule;
     $("history").innerHTML = s.labels.map((label, i) => {
       const rec = state.rounds[i];
-      const final = i === s.labels.length - 1 ? " final" : "";
+      const isFinal = i === s.labels.length - 1;
+      const final = isFinal ? " final" : "";
+      const targetLabel = isFinal
+        ? `${RD.fmt(s.survivors[i])} ${s.survivors[i] === 1 ? s.completion_label.toLowerCase() : s.completion_label_plural.toLowerCase()} remain`
+        : `${RD.fmt(s.survivors[i])} remain`;
       if (rec) {
         const result = rec.kind === "prize"
           ? `${RD.esc(rec.prize || "Gift card")} winner: ${rec.selected_tickets.map((ticket) => `#${ticket}`).join(", ")}`
           : `${RD.fmt(rec.eliminated_count)} out`;
         return `<li class="${final.trim()}"><span class="dot">${i + 1}</span>` +
-          `<span class="r-main"><b>${RD.esc(rec.label)}</b> · ${RD.fmt(rec.started_with)} → ${RD.fmt(rec.survivors)} ` +
+          `<span class="r-main"><b>${RD.esc(rec.label)}</b> · ${RD.esc(targetLabel)} ` +
           `<span class="r-sub">(${result})</span></span>` +
           `<span class="r-when">${RD.fmtTime(rec.timestamp)}</span></li>`;
       }
@@ -213,8 +217,8 @@
         ? `1 ${RD.esc(s.prizes[i] || "gift card")} winner`
         : `${RD.fmt(from - to)} out`;
       return `<li class="todo${final}"><span class="dot">${i + 1}</span>` +
-        `<span class="r-main"><b>${RD.esc(label)}</b> · ${RD.fmt(from)} → ${RD.fmt(to)} ` +
-        `<span class="r-sub">(${upcoming})</span></span>` +
+        `<span class="r-main"><b>${RD.esc(label)}</b> · ${RD.esc(targetLabel)} ` +
+        `<span class="r-sub">(${RD.fmt(from)} → ${RD.fmt(to)} · ${upcoming})</span></span>` +
         `<span class="r-when"><span class="tag">${i === state.rounds_done ? "Up next" : "Upcoming"}</span></span></li>`;
     }).join("");
   }

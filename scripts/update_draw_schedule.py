@@ -1,4 +1,4 @@
-"""Replace an unstarted relational draw schedule from app configuration."""
+"""Replace a reset relational draw schedule from app configuration."""
 
 from __future__ import annotations
 
@@ -62,20 +62,27 @@ def update_schedule(database_url: str, draw_id: str) -> dict:
                 raise RuntimeError(
                     "The configured ticket total does not match the draw."
                 )
-            round_count = connection.execute(
-                "SELECT count(*) FROM draw_rounds WHERE draw_id = %s",
+            completed_round_count = connection.execute(
+                """
+                SELECT count(*) FROM draw_rounds
+                WHERE draw_id = %s AND status = 'completed'
+                """,
                 (normalized_draw_id,),
             ).fetchone()[0]
-            if round_count:
+            if completed_round_count:
                 raise RuntimeError(
-                    "The schedule cannot be replaced after any round has "
-                    "been recorded."
+                    "The schedule cannot be replaced while completed rounds "
+                    "exist. Undo or reset the draw first."
                 )
 
-            connection.execute(
-                "DELETE FROM draw_stages WHERE draw_id = %s",
+            current_stage_numbers = connection.execute(
+                """
+                SELECT stage_number FROM draw_stages
+                WHERE draw_id = %s
+                ORDER BY stage_number
+                """,
                 (normalized_draw_id,),
-            )
+            ).fetchall()
             with connection.cursor() as cursor:
                 cursor.executemany(
                     """
@@ -83,8 +90,41 @@ def update_schedule(database_url: str, draw_id: str) -> dict:
                         draw_id, stage_number, label, kind, prize,
                         survivor_target
                     ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (draw_id, stage_number) DO UPDATE SET
+                        label = EXCLUDED.label,
+                        kind = EXCLUDED.kind,
+                        prize = EXCLUDED.prize,
+                        survivor_target = EXCLUDED.survivor_target
                     """,
                     stages,
+                )
+            extra_stage_numbers = [
+                row[0]
+                for row in current_stage_numbers
+                if row[0] > len(stages)
+            ]
+            if extra_stage_numbers:
+                referenced = connection.execute(
+                    """
+                    SELECT DISTINCT s.stage_number
+                    FROM draw_stages s
+                    JOIN draw_rounds r
+                      ON r.stage_id = s.id AND r.draw_id = s.draw_id
+                    WHERE s.draw_id = %s AND s.stage_number = ANY(%s)
+                    """,
+                    (normalized_draw_id, extra_stage_numbers),
+                ).fetchall()
+                if referenced:
+                    raise RuntimeError(
+                        "The configured schedule cannot remove stages that "
+                        "are referenced by the draw audit history."
+                    )
+                connection.execute(
+                    """
+                    DELETE FROM draw_stages
+                    WHERE draw_id = %s AND stage_number = ANY(%s)
+                    """,
+                    (normalized_draw_id, extra_stage_numbers),
                 )
             connection.execute(
                 """

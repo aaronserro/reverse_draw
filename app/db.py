@@ -132,7 +132,7 @@ class RelationalDatabase:
                 )
 
     def sync_unstarted_schedule(self, schedule: dict) -> bool:
-        """Apply configured stages only before the first audited round."""
+        """Apply configured stages when no round is currently completed."""
         desired = [
             (index, label, kind, prize, survivor_target)
             for index, (label, kind, prize, survivor_target) in enumerate(
@@ -152,7 +152,10 @@ class RelationalDatabase:
                 (self.active_draw_id,),
             )
             completed = connection.execute(
-                "SELECT count(*) FROM draw_rounds WHERE draw_id = %s",
+                """
+                SELECT count(*) FROM draw_rounds
+                WHERE draw_id = %s AND status = 'completed'
+                """,
                 (self.active_draw_id,),
             ).fetchone()["count"]
             if completed:
@@ -178,10 +181,6 @@ class RelationalDatabase:
             ]
             if current == desired:
                 return False
-            connection.execute(
-                "DELETE FROM draw_stages WHERE draw_id = %s",
-                (self.active_draw_id,),
-            )
             with connection.cursor() as cursor:
                 cursor.executemany(
                     """
@@ -189,11 +188,44 @@ class RelationalDatabase:
                         draw_id, stage_number, label, kind, prize,
                         survivor_target
                     ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (draw_id, stage_number) DO UPDATE SET
+                        label = EXCLUDED.label,
+                        kind = EXCLUDED.kind,
+                        prize = EXCLUDED.prize,
+                        survivor_target = EXCLUDED.survivor_target
                     """,
                     [
                         (self.active_draw_id, *stage)
                         for stage in desired
                     ],
+                )
+            extra_stage_numbers = [
+                row["stage_number"]
+                for row in current_rows
+                if row["stage_number"] > len(desired)
+            ]
+            if extra_stage_numbers:
+                referenced = connection.execute(
+                    """
+                    SELECT DISTINCT s.stage_number
+                    FROM draw_stages s
+                    JOIN draw_rounds r
+                      ON r.stage_id = s.id AND r.draw_id = s.draw_id
+                    WHERE s.draw_id = %s AND s.stage_number = ANY(%s)
+                    """,
+                    (self.active_draw_id, extra_stage_numbers),
+                ).fetchall()
+                if referenced:
+                    raise RuntimeError(
+                        "The configured schedule cannot remove stages that "
+                        "are referenced by the draw audit history."
+                    )
+                connection.execute(
+                    """
+                    DELETE FROM draw_stages
+                    WHERE draw_id = %s AND stage_number = ANY(%s)
+                    """,
+                    (self.active_draw_id, extra_stage_numbers),
                 )
             connection.execute(
                 """

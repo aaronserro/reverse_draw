@@ -328,6 +328,47 @@ class RelationalCommandTests(unittest.TestCase):
             ]
             self.assertEqual(len(unassignments), 2)
 
+    def test_schedule_sync_preserves_undone_round_audit_history(self):
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            original_stage_id = repositories.draws.stage(1)["id"]
+
+        self.draw_service.run_next_round(1, seed=17)
+        self.draw_service.undo_last_round(
+            2, admin_identifier="admin@example.com"
+        )
+        updated = self.database.sync_unstarted_schedule(
+            {
+                "total": 6,
+                "survivors": [5, 4, 3, 2],
+                "labels": [
+                    "Round 1",
+                    "Gift Card Draw 1",
+                    "Round 2",
+                    "Gift Card Draw 2",
+                ],
+                "kinds": ["elimination", "prize", "elimination", "prize"],
+                "prizes": ["", "Gift Card 1", "", "Gift Card 2"],
+                "completion_label": "Finalist",
+                "completion_label_plural": "Finalists",
+            }
+        )
+
+        self.assertTrue(updated)
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            stages = repositories.draws.stages()
+            history = repositories.draws.rounds(include_undone=True)
+            self.assertEqual(
+                [stage["survivor_target"] for stage in stages],
+                [5, 4, 3, 2],
+            )
+            self.assertEqual(stages[0]["id"], original_stage_id)
+            self.assertEqual(len(history), 1)
+            self.assertEqual(history[0]["status"], "undone")
+            self.assertEqual(history[0]["label_snapshot"], "Round 1")
+            self.assertEqual(history[0]["survivor_count"], 4)
+
     def test_same_expected_version_allows_only_one_concurrent_round(self):
         def execute(seed):
             try:

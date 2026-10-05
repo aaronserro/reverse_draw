@@ -44,7 +44,11 @@
     $("vtrack").innerHTML = s.labels.map((label, i) => {
       const cls = i < state.rounds_done ? "done" : i === state.rounds_done ? "current" : "";
       const dot = i < state.rounds_done ? "✓" : s.kinds[i] === "prize" ? "★" : i + 1;
-      return `<li class="${cls}"><span class="dot">${dot}</span><span class="name">${RD.esc(label)}</span><span class="cnt">→ ${RD.fmt(s.survivors[i])}</span></li>`;
+      const isFinal = i === s.labels.length - 1;
+      const targetLabel = isFinal
+        ? `${RD.fmt(s.survivors[i])} ${s.survivors[i] === 1 ? s.completion_label.toLowerCase() : s.completion_label_plural.toLowerCase()} remain`
+        : `${RD.fmt(s.survivors[i])} remain`;
+      return `<li class="${cls}"><span class="dot">${dot}</span><span class="name">${RD.esc(label)}</span><span class="cnt">→ ${RD.esc(targetLabel)}</span></li>`;
     }).join("");
 
     const left = RD.remaining(state);
