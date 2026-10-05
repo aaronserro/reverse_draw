@@ -191,10 +191,12 @@ class RelationalCommandTests(unittest.TestCase):
             expected_version=2,
             actor_identifier="admin",
         )
-        self.assertEqual(
-            merged["holders"],
-            {"1": "Alice", "2": "Bob", "3": "Bob", "4": "Cara"},
-        )
+        self.assertEqual(merged["version"], "3")
+        with self.database.connection() as connection:
+            self.assertEqual(
+                self._repositories(connection).tickets.owner_map(),
+                {1: "Alice", 2: "Bob", 3: "Bob", 4: "Cara"},
+            )
         unassigned = self.holder_service.unassign_block(
             1,
             1,
@@ -251,9 +253,10 @@ class RelationalCommandTests(unittest.TestCase):
             actor_identifier="admin",
             import_batch_id=batch["id"],
         )
-        self.assertEqual(payload["holders"], {"1": "Alice"})
+        self.assertEqual(payload["changed_tickets"], 1)
         with self.database.connection() as connection:
             repositories = self._repositories(connection)
+            self.assertEqual(repositories.tickets.owner_map(), {1: "Alice"})
             applied = repositories.imports.get_batch(batch["id"])
             self.assertEqual(applied["status"], "applied")
             self.assertTrue(applied["allocation_fingerprint"])

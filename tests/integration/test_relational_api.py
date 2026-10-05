@@ -287,6 +287,91 @@ class RelationalAPITests(unittest.TestCase):
         self.assertEqual(len(email_client.messages), 1)
         self.assertEqual(after.json()["pending_tickets"], 0)
 
+    def test_large_upload_and_apply_persists_every_allocation(self):
+        with self.database.transaction() as connection:
+            connection.execute(
+                "UPDATE draws SET total_tickets = 1000 WHERE id = %s",
+                (self.draw_id,),
+            )
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO tickets (draw_id, ticket_number)
+                    VALUES (%s, %s)
+                    """,
+                    [
+                        (self.draw_id, number)
+                        for number in range(6, 1001)
+                    ],
+                )
+
+        lines = ["ticket,name,email"]
+        for ticket in range(1, 1001):
+            holder = ((ticket - 1) % 316) + 1
+            lines.append(
+                f"{ticket},Holder {holder},holder{holder}@example.com"
+            )
+        source = ("\n".join(lines) + "\n").encode()
+
+        upload = self.client.post(
+            "/api/admin/holders/file"
+            "?filename=holders.csv&preferred_ticket_scope=all",
+            content=source,
+            headers={"content-type": "application/octet-stream"},
+        )
+
+        self.assertEqual(upload.status_code, 200, upload.text)
+        preview = upload.json()
+        self.assertEqual(preview["imported"], 1000)
+        self.assertEqual(len(preview["people"]), 316)
+        self.assertEqual(preview["dataframe"]["row_count"], 1000)
+        self.assertEqual(preview["dataframe"]["shown_count"], 100)
+        self.assertTrue(preview["dataframe"]["truncated"])
+
+        applied = self.client.put(
+            "/api/admin/holders",
+            json={
+                "csv": preview["csv"],
+                "mode": "replace",
+                "expected_version": 1,
+                "import_batch_id": preview["batch_id"],
+            },
+        )
+
+        self.assertEqual(applied.status_code, 200, applied.text)
+        result = applied.json()
+        self.assertEqual(result["imported"], 1000)
+        self.assertEqual(result["holder_count"], 316)
+        self.assertEqual(result["changed_tickets"], 1000)
+        with self.database.connection() as connection:
+            counts = connection.execute(
+                """
+                SELECT
+                  (SELECT count(*) FROM import_rows AS row
+                   JOIN import_batches AS batch
+                     ON batch.id = row.import_batch_id
+                   WHERE batch.draw_id = %s) AS import_rows,
+                  (SELECT count(*) FROM draw_participants
+                   WHERE draw_id = %s) AS participants,
+                  (SELECT count(*) FROM holder_credentials AS credential
+                   JOIN draw_participants AS participant
+                     ON participant.id = credential.participant_id
+                   WHERE participant.draw_id = %s
+                     AND credential.active) AS credentials,
+                  (SELECT count(*) FROM tickets
+                   WHERE draw_id = %s
+                     AND owner_participant_id IS NOT NULL) AS owned,
+                  (SELECT count(*) FROM ticket_ownership_events
+                   WHERE draw_id = %s) AS events
+                """,
+                (self.draw_id,) * 5,
+            ).fetchone()
+        self.assertEqual(counts["import_rows"], 1000)
+        self.assertEqual(counts["participants"], 316)
+        self.assertEqual(counts["credentials"], 316)
+        self.assertEqual(counts["owned"], 1000)
+        self.assertEqual(counts["events"], 1000)
+
     def test_upload_rejects_invalid_preferred_ticket_scope(self):
         response = self.client.post(
             "/api/admin/holders/file"

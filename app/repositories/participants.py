@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from .base import (
     ConflictError,
     Repository,
@@ -67,6 +69,46 @@ class ParticipantRepository(Repository):
             """,
             (self.draw_id, display, key, source_email),
         ).fetchone()
+
+    def upsert_many(
+        self, display_names: list[str]
+    ) -> dict[str, dict[str, Any]]:
+        unique = {}
+        for raw_name in display_names:
+            display = clean_display_name(raw_name)
+            key = normalize_person_name(display)
+            if display and key:
+                unique[key] = display
+        if not unique:
+            return {}
+        rows = self.connection.execute(
+            """
+            INSERT INTO draw_participants (
+                draw_id, display_name, normalized_name
+            )
+            SELECT %s, source.display_name, source.normalized_name
+            FROM jsonb_to_recordset(%s::jsonb) AS source(
+                display_name text,
+                normalized_name text
+            )
+            ON CONFLICT (draw_id, normalized_name) DO UPDATE
+            SET display_name = EXCLUDED.display_name, active = true
+            RETURNING *
+            """,
+            (
+                self.draw_id,
+                Jsonb(
+                    [
+                        {
+                            "display_name": unique[key],
+                            "normalized_name": key,
+                        }
+                        for key in sorted(unique)
+                    ]
+                ),
+            ),
+        ).fetchall()
+        return {row["normalized_name"]: dict(row) for row in rows}
 
     def list(self, *, include_inactive: bool = False) -> list[dict[str, Any]]:
         active_clause = "" if include_inactive else "AND active"
@@ -178,6 +220,47 @@ class ParticipantRepository(Repository):
             (external_id, digest, scheme, participant_id),
         ).fetchone()
         return require_row(row, "Participant credential does not exist.")
+
+    def upsert_credentials(
+        self, credentials: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        if not credentials:
+            return []
+        values = [
+            {
+                "participant_id": str(item["participant_id"]),
+                "external_id": str(item["external_id"]),
+                "digest": str(item["digest"]),
+                "scheme": str(item.get("scheme") or "derived-v1"),
+            }
+            for item in credentials
+        ]
+        return list(
+            self.connection.execute(
+                """
+                INSERT INTO holder_credentials (
+                    participant_id, credential_external_id,
+                    code_digest, code_scheme
+                )
+                SELECT source.participant_id, source.external_id,
+                       source.digest, source.scheme
+                FROM jsonb_to_recordset(%s::jsonb) AS source(
+                    participant_id uuid,
+                    external_id text,
+                    digest text,
+                    scheme text
+                )
+                ON CONFLICT (participant_id) DO UPDATE
+                SET credential_external_id = EXCLUDED.credential_external_id,
+                    code_digest = EXCLUDED.code_digest,
+                    code_scheme = EXCLUDED.code_scheme,
+                    active = true,
+                    rotated_at = now()
+                RETURNING *
+                """,
+                (Jsonb(values),),
+            ).fetchall()
+        )
 
     def deactivate(self, participant_id: UUID) -> None:
         self.connection.execute(

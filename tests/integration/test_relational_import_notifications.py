@@ -171,14 +171,16 @@ class RelationalImportNotificationTests(unittest.TestCase):
     def test_import_applies_ownership_emails_credentials_and_fingerprint(self):
         batch, payload = self._apply_standard_import()
 
-        self.assertEqual(
-            payload["holders"],
-            {"1": "Alice", "2": "Alice", "3": "Bob"},
-        )
+        self.assertEqual(payload["changed_tickets"], 3)
+        self.assertEqual(payload["holder_count"], 2)
         with self.database.connection() as connection:
             repositories = self._repositories(connection)
             applied = repositories.imports.get_batch(batch["id"])
             alice = repositories.participants.by_name("Alice")
+            self.assertEqual(
+                repositories.tickets.owner_map(),
+                {1: "Alice", 2: "Alice", 3: "Bob"},
+            )
             self.assertEqual(applied["status"], "applied")
             self.assertTrue(applied["allocation_fingerprint"])
             self.assertEqual(alice["source_email"], "alice@example.com")

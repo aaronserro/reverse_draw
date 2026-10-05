@@ -23,6 +23,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from . import config
 from .draw import DrawError
@@ -43,6 +44,9 @@ from .services.holder_service import CredentialProvision, HolderService
 from .services.import_service import ImportService
 from .services.marketplace_service import MarketplaceService
 from .services.notification_service import NotificationService
+
+
+SOURCE_PREVIEW_ROWS = 100
 
 
 class DomainRoute(APIRoute):
@@ -351,18 +355,28 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             repos = repositories(connection)
             expected = version_for(body, repos)
             matching_batch = body.import_batch_id
-            if matching_batch is None:
+            candidate = None
+            if matching_batch is not None:
+                candidate = repos.imports.get_batch(matching_batch)
+            else:
                 latest = repos.imports.latest()
                 if latest and latest["status"] == "previewed":
-                    rows = repos.imports.rows(latest["id"])
-                    preview_mapping = {
-                        int(row["ticket_number"]): row["holder_name"]
-                        for row in rows
-                        if row["ticket_number"] is not None
-                        and row["holder_name"]
-                    }
-                    if preview_mapping == mapping:
-                        matching_batch = latest["id"]
+                    candidate = latest
+            if candidate is not None and candidate["status"] == "previewed":
+                rows = repos.imports.rows(candidate["id"])
+                preview_mapping = {
+                    int(row["ticket_number"]): row["holder_name"]
+                    for row in rows
+                    if row["ticket_number"] is not None
+                    and row["holder_name"]
+                }
+                if preview_mapping == mapping:
+                    matching_batch = candidate["id"]
+                elif body.import_batch_id is not None:
+                    raise ConflictError(
+                        "The allocation was edited after preview. "
+                        "Upload the file again or save it as a manual list."
+                    )
         if matching_batch is not None:
             payload = ImportService(
                 db, context.credential_factory
@@ -397,12 +411,13 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
         if len(data) > 10 * 1024 * 1024:
             raise HTTPException(413, "Files must be 10 MB or smaller.")
         db = database()
-        try:
-            scope = preferred_ticket_scope.strip().casefold()
-            if scope not in {"first_100", "all"}:
-                raise ValidationError(
-                    "Preferred ticket scope must be first_100 or all."
-                )
+        scope = preferred_ticket_scope.strip().casefold()
+        if scope not in {"first_100", "all"}:
+            raise ValidationError(
+                "Preferred ticket scope must be first_100 or all."
+            )
+
+        def prepare_upload() -> dict[str, Any]:
             with db.connection() as connection:
                 draw = repositories(connection).draws.get()
             source = context.parse_upload(data, filename)
@@ -414,66 +429,79 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                 int(draw["total_tickets"]),
                 preferred_ticket_scope=scope,
             )
+            source_json = source.to_json(orient="split", date_format="iso")
+            source_fingerprint = hashlib.sha256(
+                source_json.encode()
+            ).hexdigest()
+            people = context.source_people(source)
+            metadata = {
+                "filename": filename,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with db.transaction() as connection:
+                repos = repositories(connection)
+                batch = repos.imports.create_batch(
+                    filename=filename,
+                    source_fingerprint=source_fingerprint,
+                )
+                rows = []
+                for row_number, row in enumerate(
+                    holders.itertuples(index=False), start=1
+                ):
+                    name = str(row.name)
+                    key = normalize_person_name(name)
+                    emails = people.get(key, {}).get("emails", set())
+                    rows.append(
+                        {
+                            "row_number": row_number,
+                            "ticket_number": int(row.ticket),
+                            "holder_name": name,
+                            "normalized_holder_name": key,
+                            "email": (
+                                next(iter(emails))
+                                if len(emails) == 1
+                                else None
+                            ),
+                            "raw_data": {
+                                "ticket": int(row.ticket),
+                                "name": name,
+                                "source_fingerprint": source_fingerprint,
+                                "preferred_ticket_scope": scope,
+                            },
+                            "validation_error": (
+                                "Conflicting email addresses for participant."
+                                if len(emails) > 1
+                                else None
+                            ),
+                        }
+                    )
+                repos.imports.add_rows(batch["id"], rows)
+            grouped = holders.groupby("name", sort=True)["ticket"].agg(list)
+            dataframe = context.dataframe_payload(source, metadata)
+            dataframe["rows"] = dataframe["rows"][:SOURCE_PREVIEW_ROWS]
+            dataframe["shown_count"] = len(dataframe["rows"])
+            dataframe["truncated"] = (
+                dataframe["row_count"] > dataframe["shown_count"]
+            )
+            return {
+                "batch_id": str(batch["id"]),
+                "csv": holders.to_csv(index=False),
+                "imported": len(holders),
+                "preferred_ticket_scope": scope,
+                "preferred_ticket_scope_applies": preference_scope_applies,
+                "dataframe": dataframe,
+                "people": [
+                    {"name": name, "tickets": tickets}
+                    for name, tickets in grouped.items()
+                ],
+            }
+
+        try:
+            return await run_in_threadpool(prepare_upload)
         except (DrawError, ValueError, KeyError, OSError) as error:
             raise ValidationError(
                 f"Could not read {filename}: {error}"
             ) from error
-        source_json = source.to_json(orient="split", date_format="iso")
-        source_fingerprint = hashlib.sha256(source_json.encode()).hexdigest()
-        people = context.source_people(source)
-        metadata = {
-            "filename": filename,
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        }
-        with db.transaction() as connection:
-            repos = repositories(connection)
-            batch = repos.imports.create_batch(
-                filename=filename,
-                source_fingerprint=source_fingerprint,
-            )
-            rows = []
-            for row_number, row in enumerate(
-                holders.itertuples(index=False), start=1
-            ):
-                name = str(row.name)
-                key = normalize_person_name(name)
-                emails = people.get(key, {}).get("emails", set())
-                rows.append(
-                    {
-                        "row_number": row_number,
-                        "ticket_number": int(row.ticket),
-                        "holder_name": name,
-                        "normalized_holder_name": key,
-                        "email": (
-                            next(iter(emails)) if len(emails) == 1 else None
-                        ),
-                        "raw_data": {
-                            "ticket": int(row.ticket),
-                            "name": name,
-                            "source_fingerprint": source_fingerprint,
-                            "preferred_ticket_scope": scope,
-                        },
-                        "validation_error": (
-                            "Conflicting email addresses for participant."
-                            if len(emails) > 1
-                            else None
-                        ),
-                    }
-                )
-            repos.imports.add_rows(batch["id"], rows)
-        grouped = holders.groupby("name", sort=True)["ticket"].agg(list)
-        return {
-            "batch_id": str(batch["id"]),
-            "csv": holders.to_csv(index=False),
-            "imported": len(holders),
-            "preferred_ticket_scope": scope,
-            "preferred_ticket_scope_applies": preference_scope_applies,
-            "dataframe": context.dataframe_payload(source, metadata),
-            "people": [
-                {"name": name, "tickets": tickets}
-                for name, tickets in grouped.items()
-            ],
-        }
 
     @router.get("/api/admin/holders/dataframe", dependencies=admin)
     def holder_dataframe():
@@ -485,6 +513,7 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                 return {"dataframe": None}
             rows = repos.imports.rows(batch["id"])
         columns = ["ticket", "name", "email"]
+        preview_rows = rows[:SOURCE_PREVIEW_ROWS]
         return {
             "dataframe": {
                 "filename": batch["filename"],
@@ -496,9 +525,11 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                         row["holder_name"],
                         row["email"],
                     ]
-                    for row in rows
+                    for row in preview_rows
                 ],
                 "row_count": len(rows),
+                "shown_count": len(preview_rows),
+                "truncated": len(rows) > len(preview_rows),
                 "column_count": len(columns),
             }
         }

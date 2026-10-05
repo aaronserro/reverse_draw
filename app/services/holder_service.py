@@ -72,40 +72,39 @@ class HolderService:
                 repositories, desired.values()
             )
             timestamp = self._now(connection)
-            for ticket in tickets:
-                number = int(ticket["ticket_number"])
-                desired_name = desired.get(number)
-                participant_id = (
-                    participants[normalize_person_name(desired_name)]["id"]
-                    if desired_name
-                    else None
-                )
-                if ticket["owner_participant_id"] == participant_id:
-                    continue
-                reason = self._allocation_reason(
-                    ticket["owner_participant_id"],
-                    participant_id,
-                    import_batch_id,
-                )
-                repositories.tickets.set_owner(
-                    number,
-                    participant_id,
-                    reason=reason,
-                    actor_type="admin",
-                    actor_identifier=actor,
-                    import_batch_id=import_batch_id,
-                )
-                repositories.marketplace.invalidate_ticket(
-                    ticket["id"], timestamp
-                )
+            ownership_source = incoming if mode == "merge" else desired
+            assignments = {
+                number: participants[normalize_person_name(name)]["id"]
+                for number, name in ownership_source.items()
+            }
+            changed_ticket_ids = repositories.tickets.set_owners(
+                assignments,
+                mode=mode,
+                actor_type="admin",
+                actor_identifier=actor,
+                import_batch_id=import_batch_id,
+            )
+            repositories.marketplace.invalidate_tickets(
+                changed_ticket_ids, timestamp
+            )
 
             if import_batch_id is not None:
                 repositories.imports.mark_applied(
                     import_batch_id,
                     self._allocation_fingerprint(desired),
                 )
-            repositories.draws.increment_version()
-            return self._result(repositories, generated)
+            version = repositories.draws.increment_version()
+            return {
+                "version": str(version),
+                "changed_tickets": len(changed_ticket_ids),
+                "holder_count": len(
+                    {
+                        normalize_person_name(name)
+                        for name in incoming.values()
+                    }
+                ),
+                "new_trading_credentials": generated,
+            }
 
     def assign_block(
         self,
@@ -194,19 +193,43 @@ class HolderService:
         repositories: Repositories,
         names: Any,
     ) -> tuple[dict[str, dict[str, Any]], list[dict[str, str]]]:
-        participants = {}
-        generated = []
         unique = {
             normalize_person_name(name): clean_display_name(name)
             for name in names
             if normalize_person_name(name)
         }
-        for key in sorted(unique):
-            participant, credentials = self._participant_for(
-                repositories, unique[key]
+        participants = repositories.participants.upsert_many(
+            [unique[key] for key in sorted(unique)]
+        )
+        existing = repositories.participants.credentials_for_participants(
+            [participant["id"] for participant in participants.values()]
+        )
+        generated = []
+        credentials = []
+        for key in sorted(participants):
+            participant = participants[key]
+            credential = existing.get(participant["id"])
+            if credential is not None and credential["active"]:
+                continue
+            provision = self.credential_factory(
+                key, participant["display_name"]
             )
-            participants[key] = participant
-            generated.extend(credentials)
+            credentials.append(
+                {
+                    "participant_id": participant["id"],
+                    "external_id": provision.external_id,
+                    "digest": provision.digest,
+                    "scheme": provision.scheme,
+                }
+            )
+            if provision.readable_code is not None:
+                generated.append(
+                    {
+                        "name": participant["display_name"],
+                        "code": provision.readable_code,
+                    }
+                )
+        repositories.participants.upsert_credentials(credentials)
         return participants, generated
 
     def _participant_for(

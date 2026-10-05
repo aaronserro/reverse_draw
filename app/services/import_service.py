@@ -6,6 +6,8 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from app.repositories import ConflictError, Repositories, ValidationError
 
 from .holder_service import CredentialFactory, HolderService
@@ -108,24 +110,34 @@ class ImportService:
             if email:
                 person["emails"].add(email)
 
-        repositories = Repositories(
-            connection, self.database.active_draw_id
-        )
+        updates = []
         for key, source in by_person.items():
-            participant = repositories.participants.by_name(key)
-            if participant is None:
-                continue
             emails = source["emails"]
-            source_email = next(iter(emails)) if len(emails) == 1 else None
-            connection.execute(
-                """
-                UPDATE draw_participants
-                SET source_email = %s
-                WHERE id = %s AND draw_id = %s
-                """,
-                (
-                    source_email,
-                    participant["id"],
-                    self.database.active_draw_id,
-                ),
+            updates.append(
+                {
+                    "normalized_name": key,
+                    "source_email": (
+                        next(iter(emails)) if len(emails) == 1 else None
+                    ),
+                }
+            )
+        if not updates:
+            return
+        updated = connection.execute(
+            """
+            UPDATE draw_participants AS participant
+            SET source_email = source.source_email
+            FROM jsonb_to_recordset(%s::jsonb) AS source(
+                normalized_name text,
+                source_email text
+            )
+            WHERE participant.draw_id = %s
+              AND participant.normalized_name = source.normalized_name
+            RETURNING participant.id
+            """,
+            (Jsonb(updates), self.database.active_draw_id),
+        ).fetchall()
+        if len(updated) != len(updates):
+            raise ValidationError(
+                "Every imported holder must resolve to one participant."
             )

@@ -5,9 +5,18 @@
   let notificationPreview = null;
   let emailPoll = null;
   let loadedHolderFile = null;
+  let loadedImportBatchId = null;
+  let loadedAllocationCsv = null;
 
   function preferredTicketScope() {
     return $("preferredFirst100").checked ? "first_100" : "all";
+  }
+
+  function setHolderImportStatus(message = "", kind = "") {
+    const status = $("holderImportStatus");
+    status.textContent = message;
+    status.className = `banner ${kind}`.trim();
+    status.classList.toggle("hidden", !message);
   }
 
   // ================================================================ views
@@ -337,7 +346,12 @@
     button.textContent = "Reset draw…";
   };
 
-  $("holdersCsv").addEventListener("input", () => { csvDirty = true; });
+  $("holdersCsv").addEventListener("input", () => {
+    csvDirty = true;
+    if (loadedAllocationCsv !== null && $("holdersCsv").value !== loadedAllocationCsv) {
+      setHolderImportStatus("Allocation edited — Save/Merge will apply it as a manual list.");
+    }
+  });
 
   // The server reads the workbook with pandas and returns ticket,name rows, so
   // the file's bytes must never reach the textarea.
@@ -349,7 +363,12 @@
     label.firstChild.textContent = "Loading…";
     picker.disabled = true;
     scopeToggle.disabled = true;
+    $("saveHolders").disabled = true;
+    $("mergeHolders").disabled = true;
     $("uploadPreview").innerHTML = "";
+    loadedImportBatchId = null;
+    loadedAllocationCsv = null;
+    setHolderImportStatus("Reading and allocating the uploaded file…");
     try {
       const scope = preferredTicketScope();
       const query = new URLSearchParams({
@@ -371,18 +390,29 @@
       $("holdersCsv").value = result.csv;
       if (!result.imported) throw new Error("No valid ticket holders were found in the uploaded data.");
       loadedHolderFile = file;
+      loadedImportBatchId = result.batch_id;
+      loadedAllocationCsv = result.csv;
       csvDirty = true;
       renderUploadPreview(result, file.name);
       renderSourceDataframe(result.dataframe);
       loadNotifications();
+      setHolderImportStatus(
+        `Preview ready — ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s).`,
+        "ok"
+      );
       RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
     } catch (e) {
       if (e.status === 401) show("login");
-      else RD.toast(e.message, true);
+      else {
+        setHolderImportStatus(`Upload failed: ${e.message}`, "err");
+        RD.toast(e.message, true);
+      }
     } finally {
       label.firstChild.textContent = originalLabel;
       picker.disabled = false;
       scopeToggle.disabled = false;
+      $("saveHolders").disabled = false;
+      $("mergeHolders").disabled = false;
       picker.value = "";
     }
   }
@@ -417,10 +447,13 @@
     const body = dataframe.rows.map((row) =>
       `<tr>${row.map((value) => `<td>${RD.esc(value ?? "")}</td>`).join("")}</tr>`
     ).join("");
+    const previewNote = dataframe.truncated
+      ? ` Showing ${RD.fmt(dataframe.shown_count)} of ${RD.fmt(dataframe.row_count)} rows; all rows were processed.`
+      : "";
     container.innerHTML =
       `<div class="section-title">Saved source DataFrame</div>` +
       `<p class="hint"><b>${RD.esc(dataframe.filename)}</b> · ${RD.fmt(dataframe.row_count)} rows × ` +
-      `${RD.fmt(dataframe.column_count)} columns. This is the complete uploaded sheet and is stored separately from ticket allocation.</p>` +
+      `${RD.fmt(dataframe.column_count)} columns.${previewNote}</p>` +
       `<div class="scroll dataframe-scroll"><table class="dataframe-table">` +
       `<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
@@ -525,9 +558,50 @@
   });
 
   async function saveHolders(mode) {
-    const ok = await act(() => RD.api("/api/admin/holders", { method: "PUT", body: { csv: $("holdersCsv").value, mode } }),
-      (s) => `Saved ${RD.fmt(s.imported)} ticket holder(s)`);
-    if (ok) { csvDirty = false; $("holdersCsv").value = holdersToCsv(); loadNotifications(); }
+    const save = $("saveHolders");
+    const merge = $("mergeHolders");
+    save.disabled = true;
+    merge.disabled = true;
+    setHolderImportStatus("Applying ticket assignments…");
+    try {
+      const csv = $("holdersCsv").value;
+      const importBatchId = loadedAllocationCsv === csv
+        ? loadedImportBatchId
+        : null;
+      const result = await RD.api("/api/admin/holders", {
+        method: "PUT",
+        body: {
+          csv,
+          mode,
+          import_batch_id: importBatchId,
+        },
+      });
+      captureTradingCredentials(result.new_trading_credentials || []);
+      setHolderImportStatus(
+        `Saved ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.holder_count)} holder(s). Refreshing…`,
+        "ok"
+      );
+      RD.toast(`Saved ${RD.fmt(result.imported)} ticket assignment(s).`);
+      await load();
+      csvDirty = false;
+      loadedImportBatchId = null;
+      loadedAllocationCsv = null;
+      $("holdersCsv").value = holdersToCsv();
+      setHolderImportStatus(
+        `Saved ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.holder_count)} holder(s).`,
+        "ok"
+      );
+    } catch (e) {
+      if (e.status === 401) show("login");
+      else {
+        setHolderImportStatus(`Save failed: ${e.message}`, "err");
+        RD.toast(e.message, true);
+        await load();
+      }
+    } finally {
+      save.disabled = false;
+      merge.disabled = false;
+    }
   }
   $("saveHolders").onclick = async () => {
     const ok = await RD.confirm({

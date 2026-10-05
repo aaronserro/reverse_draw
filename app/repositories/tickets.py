@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 from uuid import UUID
 
+from psycopg.types.json import Jsonb
+
 from .base import Repository, ValidationError, require_row
 
 
@@ -182,6 +184,90 @@ class TicketRepository(Repository):
             ),
         )
         return True
+
+    def set_owners(
+        self,
+        assignments: dict[int, UUID],
+        *,
+        mode: str,
+        actor_type: str,
+        actor_identifier: str | None = None,
+        import_batch_id: UUID | None = None,
+    ) -> list[UUID]:
+        if mode not in {"replace", "merge"}:
+            raise ValidationError("Allocation mode must be replace or merge.")
+        desired = [
+            {
+                "ticket_number": int(ticket_number),
+                "participant_id": str(participant_id),
+            }
+            for ticket_number, participant_id in sorted(assignments.items())
+        ]
+        rows = self.connection.execute(
+            """
+            WITH desired AS MATERIALIZED (
+                SELECT ticket_number, participant_id
+                FROM jsonb_to_recordset(%s::jsonb) AS source(
+                    ticket_number integer,
+                    participant_id uuid
+                )
+            ),
+            locked AS MATERIALIZED (
+                SELECT ticket.id, ticket.owner_participant_id AS previous_id,
+                       desired.participant_id AS next_id
+                FROM tickets AS ticket
+                LEFT JOIN desired
+                  ON desired.ticket_number = ticket.ticket_number
+                WHERE ticket.draw_id = %s
+                  AND (%s = 'replace' OR desired.ticket_number IS NOT NULL)
+                FOR UPDATE OF ticket
+            ),
+            changed AS MATERIALIZED (
+                SELECT * FROM locked
+                WHERE previous_id IS DISTINCT FROM next_id
+            ),
+            updated AS (
+                UPDATE tickets AS ticket
+                SET owner_participant_id = changed.next_id
+                FROM changed
+                WHERE ticket.id = changed.id
+                RETURNING ticket.id
+            ),
+            recorded AS (
+                INSERT INTO ticket_ownership_events (
+                    draw_id, ticket_id, from_participant_id,
+                    to_participant_id, reason, import_batch_id,
+                    actor_type, actor_identifier
+                )
+                SELECT %s, changed.id, changed.previous_id,
+                       changed.next_id,
+                       CASE
+                         WHEN changed.next_id IS NULL
+                           THEN 'admin_unassignment'
+                        WHEN changed.previous_id IS NULL
+                            AND %s::uuid IS NOT NULL
+                           THEN 'initial_import'
+                         ELSE 'admin_correction'
+                       END,
+                       %s::uuid, %s, %s
+                FROM changed
+                JOIN updated ON updated.id = changed.id
+                RETURNING ticket_id
+            )
+            SELECT ticket_id FROM recorded
+            """,
+            (
+                Jsonb(desired),
+                self.draw_id,
+                mode,
+                self.draw_id,
+                import_batch_id,
+                import_batch_id,
+                actor_type,
+                actor_identifier,
+            ),
+        ).fetchall()
+        return [row["ticket_id"] for row in rows]
 
     def clear_all_owners(
         self, *, actor_type: str, actor_identifier: str | None = None

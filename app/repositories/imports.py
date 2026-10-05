@@ -53,28 +53,45 @@ class ImportRepository(Repository):
         values = []
         for row in rows:
             values.append(
-                (
-                    batch_id,
-                    int(row["row_number"]),
-                    row.get("ticket_number"),
-                    row.get("holder_name"),
-                    row.get("normalized_holder_name"),
-                    row.get("email"),
-                    Jsonb(row.get("raw_data") or {}),
-                    row.get("validation_error"),
-                )
+                {
+                    "row_number": int(row["row_number"]),
+                    "ticket_number": row.get("ticket_number"),
+                    "holder_name": row.get("holder_name"),
+                    "normalized_holder_name": row.get(
+                        "normalized_holder_name"
+                    ),
+                    "email": row.get("email"),
+                    "raw_data": row.get("raw_data") or {},
+                    "validation_error": row.get("validation_error"),
+                }
             )
         if values:
-            with self.connection.cursor() as cursor:
-                cursor.executemany(
-                    """
-                    INSERT INTO import_rows (
-                        import_batch_id, row_number, ticket_number,
-                        holder_name, normalized_holder_name, email,
-                        raw_data, validation_error
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    values,
+            inserted = self.connection.execute(
+                """
+                INSERT INTO import_rows (
+                    import_batch_id, row_number, ticket_number,
+                    holder_name, normalized_holder_name, email,
+                    raw_data, validation_error
+                )
+                SELECT %s, row_number, ticket_number, holder_name,
+                       normalized_holder_name, email, raw_data,
+                       validation_error
+                FROM jsonb_to_recordset(%s::jsonb) AS source(
+                    row_number integer,
+                    ticket_number integer,
+                    holder_name text,
+                    normalized_holder_name text,
+                    email text,
+                    raw_data jsonb,
+                    validation_error text
+                )
+                RETURNING id
+                """,
+                (batch_id, Jsonb(values)),
+            ).fetchall()
+            if len(inserted) != len(values):
+                raise ConflictError(
+                    "The complete import preview could not be stored."
                 )
         self.connection.execute(
             """
