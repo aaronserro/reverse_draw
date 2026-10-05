@@ -72,7 +72,12 @@
     $("warnNoDb").classList.toggle("hidden", !state.warn_no_db);
     $("warnSchedule").classList.toggle("hidden", !state.schedule_pending);
     $("warnCode").classList.toggle("hidden", !!state.public_code_set);
-    $("storageInfo").textContent = state.storage === "postgres" ? "Connected to database" : "Local SQLite file";
+    const storageLabels = {
+      "supabase-relational": "Supabase connected",
+      postgres: "PostgreSQL connected",
+      sqlite: "Local storage",
+    };
+    $("storageInfo").textContent = storageLabels[state.storage] || "Database connected";
   }
 
   function renderStats() {
