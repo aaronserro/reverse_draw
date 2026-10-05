@@ -4,6 +4,11 @@
   let csvDirty = false;
   let notificationPreview = null;
   let emailPoll = null;
+  let loadedHolderFile = null;
+
+  function preferredTicketScope() {
+    return $("preferredFirst100").checked ? "first_100" : "all";
+  }
 
   // ================================================================ views
   function show(view) {
@@ -329,13 +334,20 @@
   // the file's bytes must never reach the textarea.
   async function uploadHolderFile(file) {
     const picker = $("csvFile");
+    const scopeToggle = $("preferredFirst100");
     const label = picker.closest("label");
     const originalLabel = label.firstChild.textContent;
     label.firstChild.textContent = "Loading…";
     picker.disabled = true;
+    scopeToggle.disabled = true;
     $("uploadPreview").innerHTML = "";
     try {
-      const response = await fetch(`/api/admin/holders/file?filename=${encodeURIComponent(file.name)}`, {
+      const scope = preferredTicketScope();
+      const query = new URLSearchParams({
+        filename: file.name,
+        preferred_ticket_scope: scope,
+      });
+      const response = await fetch(`/api/admin/holders/file?${query}`, {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/octet-stream" },
@@ -349,6 +361,7 @@
       }
       $("holdersCsv").value = result.csv;
       if (!result.imported) throw new Error("No valid ticket holders were found in the uploaded data.");
+      loadedHolderFile = file;
       csvDirty = true;
       renderUploadPreview(result, file.name);
       renderSourceDataframe(result.dataframe);
@@ -360,19 +373,26 @@
     } finally {
       label.firstChild.textContent = originalLabel;
       picker.disabled = false;
+      scopeToggle.disabled = false;
       picker.value = "";
     }
   }
 
   // Shows how the tickets were allocated per holder, before anything is saved.
   function renderUploadPreview(result, filename) {
+    const scopeLabel = result.preferred_ticket_scope === "all"
+      ? "all valid orders"
+      : "the first 100 valid orders";
+    const allocationNote = result.preferred_ticket_scope_applies
+      ? `Preferred choices were considered for ${scopeLabel}.`
+      : "Explicit ticket assignments were used; the preferred-ticket option does not apply.";
     const rows = result.people.map((p) =>
       `<tr><td><b>${RD.esc(p.name)}</b></td><td class="r">${RD.fmt(p.tickets.length)}</td>` +
       `<td class="small muted">${p.tickets.join(", ")}</td></tr>`).join("");
     $("uploadPreview").innerHTML =
       `<div class="section-title">Allocation from ${RD.esc(filename)} — not saved yet</div>` +
       `<p class="hint">${RD.fmt(result.imported)} ticket(s) across ${RD.fmt(result.people.length)} holder(s), ` +
-      `sorted by holder. Use Save or Merge above to apply it.</p>` +
+      `sorted by holder. ${allocationNote} Use Save or Merge above to apply it.</p>` +
       `<div class="scroll" style="max-height:260px"><table>` +
       `<tr><th>Holder</th><th class="r">Tickets</th><th>Ticket numbers</th></tr>${rows}</table></div>`;
   }
@@ -466,6 +486,10 @@
   $("csvFile").addEventListener("change", (ev) => {
     const file = ev.target.files[0];
     if (file) uploadHolderFile(file);
+  });
+
+  $("preferredFirst100").addEventListener("change", () => {
+    if (loadedHolderFile) uploadHolderFile(loadedHolderFile);
   });
 
   // Dropping a workbook on the page used to paste its raw bytes into the

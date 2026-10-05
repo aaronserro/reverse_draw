@@ -114,6 +114,9 @@ class RelationalAPITests(unittest.TestCase):
             clear_failure=lambda key: self.failures.pop(key, None),
             parse_upload=main._read_upload_dataframe,
             holders_from_frame=main._holders_from_dataframe,
+            preferred_ticket_scope_applies=(
+                main._preferred_ticket_scope_applies
+            ),
             dataframe_payload=main._dataframe_payload,
             source_people=main._source_people,
         )
@@ -211,11 +214,27 @@ class RelationalAPITests(unittest.TestCase):
             b"2,Alice,alice@example.com\n"
         )
         upload = self.client.post(
-            "/api/admin/holders/file?filename=holders.csv",
+            "/api/admin/holders/file"
+            "?filename=holders.csv&preferred_ticket_scope=all",
             content=source,
             headers={"content-type": "application/octet-stream"},
         )
         self.assertEqual(upload.status_code, 200, upload.text)
+        self.assertEqual(upload.json()["preferred_ticket_scope"], "all")
+        self.assertFalse(
+            upload.json()["preferred_ticket_scope_applies"]
+        )
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            imported = repositories.imports.latest()
+            rows = repositories.imports.rows(imported["id"])
+        self.assertTrue(rows)
+        self.assertTrue(
+            all(
+                row["raw_data"]["preferred_ticket_scope"] == "all"
+                for row in rows
+            )
+        )
         applied = self.client.put(
             "/api/admin/holders",
             json={
@@ -267,6 +286,17 @@ class RelationalAPITests(unittest.TestCase):
         self.assertEqual(sent.status_code, 200, sent.text)
         self.assertEqual(len(email_client.messages), 1)
         self.assertEqual(after.json()["pending_tickets"], 0)
+
+    def test_upload_rejects_invalid_preferred_ticket_scope(self):
+        response = self.client.post(
+            "/api/admin/holders/file"
+            "?filename=holders.csv&preferred_ticket_scope=first_50",
+            content=b"ticket,name\n1,Alice\n",
+            headers={"content-type": "application/octet-stream"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("first_100 or all", response.json()["detail"])
 
     def test_stale_round_version_and_maintenance_are_rejected(self):
         first = self.client.post(

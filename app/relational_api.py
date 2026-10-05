@@ -89,7 +89,8 @@ class RelationalAPIContext:
     record_failure: Callable[[str], None]
     clear_failure: Callable[[str], None]
     parse_upload: Callable[[bytes, str], Any]
-    holders_from_frame: Callable[[Any, int], Any]
+    holders_from_frame: Callable[..., Any]
+    preferred_ticket_scope_applies: Callable[[Any], bool]
     dataframe_payload: Callable[[Any, dict[str, Any]], dict[str, Any]]
     source_people: Callable[[Any], dict[str, dict[str, Any]]]
 
@@ -385,7 +386,11 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
         return payload
 
     @router.post("/api/admin/holders/file", dependencies=admin_write)
-    async def upload_holders(request: Request, filename: str):
+    async def upload_holders(
+        request: Request,
+        filename: str,
+        preferred_ticket_scope: str = "first_100",
+    ):
         data = await request.body()
         if not data:
             raise ValidationError("The selected file is empty.")
@@ -393,11 +398,21 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             raise HTTPException(413, "Files must be 10 MB or smaller.")
         db = database()
         try:
+            scope = preferred_ticket_scope.strip().casefold()
+            if scope not in {"first_100", "all"}:
+                raise ValidationError(
+                    "Preferred ticket scope must be first_100 or all."
+                )
             with db.connection() as connection:
                 draw = repositories(connection).draws.get()
             source = context.parse_upload(data, filename)
+            preference_scope_applies = (
+                context.preferred_ticket_scope_applies(source)
+            )
             holders = context.holders_from_frame(
-                source, int(draw["total_tickets"])
+                source,
+                int(draw["total_tickets"]),
+                preferred_ticket_scope=scope,
             )
         except (DrawError, ValueError, KeyError, OSError) as error:
             raise ValidationError(
@@ -436,6 +451,7 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                             "ticket": int(row.ticket),
                             "name": name,
                             "source_fingerprint": source_fingerprint,
+                            "preferred_ticket_scope": scope,
                         },
                         "validation_error": (
                             "Conflicting email addresses for participant."
@@ -450,6 +466,8 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             "batch_id": str(batch["id"]),
             "csv": holders.to_csv(index=False),
             "imported": len(holders),
+            "preferred_ticket_scope": scope,
+            "preferred_ticket_scope_applies": preference_scope_applies,
             "dataframe": context.dataframe_payload(source, metadata),
             "people": [
                 {"name": name, "tickets": tickets}

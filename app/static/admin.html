@@ -120,6 +120,10 @@
 
           <div data-pane="holders">
             <p class="hint">Load a CSV/Excel file — or drop one anywhere on this page — or enter <code>ticket,name</code> rows by hand. Order-form exports are read with pandas and converted to ticket holders using the name, quantity and preferred ticket columns; each person's orders are combined and tickets are allocated in holder order.</p>
+            <label class="check" style="margin-bottom:12px;align-items:flex-start">
+              <input type="checkbox" id="preferredFirst100" checked>
+              <span><b>Preferred tickets for the first 100 valid orders only</b><br><span class="hint">Turn this off to honor preferred choices for every valid order. Blank or invalid rows do not count; later orders still receive random tickets.</span></span>
+            </label>
             <textarea class="input" id="holdersCsv" spellcheck="false" placeholder="ticket,name&#10;1,Jane Doe&#10;2,Bob Smith"></textarea>
             <div class="field-row" style="margin-top:10px; justify-content:space-between">
               <label class="btn file-btn">📄 Load CSV or Excel…<input type="file" id="csvFile" accept=".csv,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
@@ -225,6 +229,6 @@
 
 <script src="/static/common.js?v=25"></script>
 <script src="/static/pwa.js?v=20"></script>
-<script src="/static/admin.js?v=22"></script>
+<script src="/static/admin.js?v=23"></script>
 </body>
 </html>

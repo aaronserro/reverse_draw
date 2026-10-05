@@ -810,6 +810,11 @@ def _assignment_dataframe(frame: pd.DataFrame) -> pd.DataFrame | None:
     )
 
 
+def _preferred_ticket_scope_applies(frame: pd.DataFrame) -> bool:
+    """Return whether this source is an order export, not direct assignments."""
+    return _assignment_dataframe(frame) is None
+
+
 NAME_HEADERS = (
     "full name",
     "name",
@@ -834,6 +839,17 @@ QUANTITY_HEADERS = (
     "# of tickets",
     "how many tickets",
 )
+PREFERRED_TICKET_SCOPES = {"first_100", "all"}
+DEFAULT_PREFERRED_TICKET_SCOPE = "first_100"
+
+
+def _preferred_ticket_scope(value: str) -> str:
+    scope = str(value or "").strip().casefold()
+    if scope not in PREFERRED_TICKET_SCOPES:
+        raise DrawError(
+            "Preferred ticket scope must be first_100 or all."
+        )
+    return scope
 
 
 def _pick_column(columns: list[tuple[str, object]], headers: tuple[str, ...], *,
@@ -890,7 +906,11 @@ def _orders_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
         [n for column in preference_columns for n in _choice_numbers(row[column])]
         for _, row in frame.iterrows()
     ]
-    return orders[(orders["name"] != "") & (orders["quantity"] > 0)]
+    orders = orders[
+        (orders["name"] != "") & (orders["quantity"] > 0)
+    ].reset_index(drop=True)
+    orders["valid_order_number"] = range(1, len(orders) + 1)
+    return orders
 
 
 def _holders_by_name(orders: pd.DataFrame) -> pd.DataFrame:
@@ -902,13 +922,19 @@ def _holders_by_name(orders: pd.DataFrame) -> pd.DataFrame:
     )
     # Kept as a list per order, because one order's numbers are alternatives.
     people["choices"] = grouped["choices"].apply(list)
+    people["valid_order_numbers"] = grouped["valid_order_number"].apply(list)
     return people.sort_values(
         "name", key=lambda names: names.str.casefold()
     ).reset_index(drop=True)
 
 
-def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
+def _order_dataframe(
+    frame: pd.DataFrame,
+    total: int,
+    preferred_ticket_scope: str = DEFAULT_PREFERRED_TICKET_SCOPE,
+) -> pd.DataFrame:
     """Expand an order export into ticket holders, allocated in holder order."""
+    scope = _preferred_ticket_scope(preferred_ticket_scope)
     people = _holders_by_name(_orders_dataframe(frame))
     requested = int(people["quantity"].sum())
     if requested > total:
@@ -925,9 +951,16 @@ def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
     # always allocates the same way.
     for index, person in people.iterrows():
         taken = 0
-        for order_choices in person["choices"]:
+        orders = zip(
+            person["valid_order_numbers"],
+            person["choices"],
+            strict=True,
+        )
+        for order_number, order_choices in orders:
             if taken >= person["quantity"]:
                 break
+            if scope == "first_100" and order_number > 100:
+                continue
             for preferred in order_choices:
                 if 1 <= preferred <= total and preferred not in assignments:
                     assignments[preferred] = person["name"]
@@ -954,20 +987,34 @@ def _order_dataframe(frame: pd.DataFrame, total: int) -> pd.DataFrame:
 
 
 def _uploaded_holders_dataframe(
-    data: bytes, filename: str, total: int
+    data: bytes,
+    filename: str,
+    total: int,
+    preferred_ticket_scope: str = DEFAULT_PREFERRED_TICKET_SCOPE,
 ) -> pd.DataFrame:
     """Return a validated ticket/name DataFrame for any supported upload."""
     source = _read_upload_dataframe(data, filename)
-    return _holders_from_dataframe(source, total)
+    return _holders_from_dataframe(
+        source,
+        total,
+        preferred_ticket_scope=preferred_ticket_scope,
+    )
 
 
 def _holders_from_dataframe(
-    source: pd.DataFrame, total: int
+    source: pd.DataFrame,
+    total: int,
+    preferred_ticket_scope: str = DEFAULT_PREFERRED_TICKET_SCOPE,
 ) -> pd.DataFrame:
     """Build ticket assignments without modifying the source DataFrame."""
+    scope = _preferred_ticket_scope(preferred_ticket_scope)
     holders = _assignment_dataframe(source)
     if holders is None:
-        holders = _order_dataframe(source, total)
+        holders = _order_dataframe(
+            source,
+            total,
+            preferred_ticket_scope=scope,
+        )
 
     holders["ticket"] = pd.to_numeric(holders["ticket"], errors="coerce")
     holders["name"] = holders["name"].fillna("").astype(str).str.strip()
@@ -1248,7 +1295,11 @@ def get_holder_dataframe():
 
 
 @app.post("/api/admin/holders/file", dependencies=admin_write)
-async def preview_holder_file(request: Request, filename: str):
+async def preview_holder_file(
+    request: Request,
+    filename: str,
+    preferred_ticket_scope: str = DEFAULT_PREFERRED_TICKET_SCOPE,
+):
     content_length = request.headers.get("content-length")
     too_large = (
         content_length
@@ -1268,13 +1319,20 @@ async def preview_holder_file(request: Request, filename: str):
         bad_request(DrawError("The selected file is empty."))
 
     try:
+        scope = _preferred_ticket_scope(preferred_ticket_scope)
         source = _read_upload_dataframe(data, filename)
+        preference_scope_applies = _preferred_ticket_scope_applies(source)
         with Mutation() as draw:
-            holders = _holders_from_dataframe(source, draw.total)
+            holders = _holders_from_dataframe(
+                source,
+                draw.total,
+                preferred_ticket_scope=scope,
+            )
             draw.source_dataframe = {
                 "filename": Path(filename).name,
                 "uploaded_at": now_iso(),
                 "json": source.to_json(orient="split", date_format="iso"),
+                "preferred_ticket_scope": scope,
             }
             draw.source_dataframe["fingerprint"] = _source_fingerprint(
                 draw.source_dataframe
@@ -1285,6 +1343,8 @@ async def preview_holder_file(request: Request, filename: str):
         return {
             "csv": holders.to_csv(index=False),
             "imported": len(holders),
+            "preferred_ticket_scope": scope,
+            "preferred_ticket_scope_applies": preference_scope_applies,
             "dataframe": dataframe,
             "people": [
                 {"name": name, "tickets": tickets} for name, tickets in people.items()
@@ -1682,6 +1742,9 @@ if config.RELATIONAL_STORE_ENABLED:
                 clear_failure=_clear_failure,
                 parse_upload=_read_upload_dataframe,
                 holders_from_frame=_holders_from_dataframe,
+                preferred_ticket_scope_applies=(
+                    _preferred_ticket_scope_applies
+                ),
                 dataframe_payload=_dataframe_payload,
                 source_people=_source_people,
             )
