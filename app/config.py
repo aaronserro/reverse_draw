@@ -86,7 +86,7 @@ RANDOM_SEED = None
 # The 6-digit code people type to see the public page. "" = no code needed.
 # If your GitHub repo is public, set the code in Render instead (Environment ->
 # PUBLIC_ACCESS_CODE); that value overrides this one.
-PUBLIC_ACCESS_CODE = "123456"
+PUBLIC_ACCESS_CODE = "478329"
 PUBLIC_SESSION_DAYS = 14             # How long a device stays "logged in"
 TRADER_SESSION_DAYS = 7              # Holder trading-login session length
 
