@@ -33,7 +33,7 @@ TOTAL_TICKETS = 1000                 # Tickets are numbered 1..TOTAL_TICKETS
 
 # Tickets still eligible for the grand prize after each stage. Gift-card
 # winners leave the pool, which is why each gift-card stage decreases by 1.
-ROUND_SURVIVORS = [500, 499, 300, 299, 100, 99, 10]
+ROUND_SURVIVORS = [501, 500, 301, 300, 101, 100, 11, 10]
 
 # One label per stage (same length as ROUND_SURVIVORS).
 ROUND_LABELS = [
@@ -44,6 +44,7 @@ ROUND_LABELS = [
     "Round 3",
     "Gift Card Draw 3",
     "Round 4",
+    "Gift Card Draw 4",
 ]
 
 # `elimination` removes the configured number of tickets. `prize` selects the
@@ -56,6 +57,7 @@ ROUND_KINDS = [
     "elimination",
     "prize",
     "elimination",
+    "prize",
 ]
 ROUND_PRIZES = [
     "",
@@ -65,6 +67,7 @@ ROUND_PRIZES = [
     "",
     "Gift Card 3",
     "",
+    "Gift Card 4",
 ]
 
 # The draw intentionally stops with finalists; it does not select the grand-

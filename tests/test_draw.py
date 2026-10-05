@@ -84,7 +84,7 @@ class DynamicScheduleTests(unittest.TestCase):
                 record["started_with"] - record["survivors"]
                 for record in records
             ],
-            [500, 1, 199, 1, 199, 1, 89],
+            [499, 1, 199, 1, 199, 1, 89, 1],
         )
         self.assertEqual(
             [record["kind"] for record in records],
@@ -96,6 +96,7 @@ class DynamicScheduleTests(unittest.TestCase):
                 "elimination",
                 "prize",
                 "elimination",
+                "prize",
             ],
         )
         prize_records = [
@@ -124,7 +125,7 @@ class DynamicScheduleTests(unittest.TestCase):
         self.assertEqual(undone["prize"], "Gift Card 1")
         self.assertIn(winning_ticket, draw.active())
         self.assertEqual(draw.status(winning_ticket), "Still in")
-        self.assertEqual(len(draw.active()), 500)
+        self.assertEqual(len(draw.active()), 501)
 
 
 if __name__ == "__main__":

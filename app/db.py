@@ -131,6 +131,86 @@ class RelationalDatabase:
                     f"ACTIVE_DRAW_ID {self.active_draw_id} does not exist."
                 )
 
+    def sync_unstarted_schedule(self, schedule: dict) -> bool:
+        """Apply configured stages only before the first audited round."""
+        desired = [
+            (index, label, kind, prize, survivor_target)
+            for index, (label, kind, prize, survivor_target) in enumerate(
+                zip(
+                    schedule["labels"],
+                    schedule["kinds"],
+                    schedule["prizes"],
+                    schedule["survivors"],
+                    strict=True,
+                ),
+                start=1,
+            )
+        ]
+        with self.pool.connection() as connection, connection.transaction():
+            connection.execute(
+                "SELECT id FROM draws WHERE id = %s FOR UPDATE",
+                (self.active_draw_id,),
+            )
+            completed = connection.execute(
+                "SELECT count(*) FROM draw_rounds WHERE draw_id = %s",
+                (self.active_draw_id,),
+            ).fetchone()["count"]
+            if completed:
+                return False
+            current_rows = connection.execute(
+                """
+                SELECT stage_number, label, kind, prize, survivor_target
+                FROM draw_stages
+                WHERE draw_id = %s
+                ORDER BY stage_number
+                """,
+                (self.active_draw_id,),
+            ).fetchall()
+            current = [
+                (
+                    row["stage_number"],
+                    row["label"],
+                    row["kind"],
+                    row["prize"],
+                    row["survivor_target"],
+                )
+                for row in current_rows
+            ]
+            if current == desired:
+                return False
+            connection.execute(
+                "DELETE FROM draw_stages WHERE draw_id = %s",
+                (self.active_draw_id,),
+            )
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO draw_stages (
+                        draw_id, stage_number, label, kind, prize,
+                        survivor_target
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (self.active_draw_id, *stage)
+                        for stage in desired
+                    ],
+                )
+            connection.execute(
+                """
+                UPDATE draws
+                SET completion_label = %s,
+                    completion_label_plural = %s,
+                    version = version + 1
+                WHERE id = %s
+                """,
+                (
+                    schedule["completion_label"],
+                    schedule["completion_label_plural"],
+                    self.active_draw_id,
+                ),
+            )
+            return True
+
     @contextmanager
     def connection(self):
         with self.pool.connection() as conn:

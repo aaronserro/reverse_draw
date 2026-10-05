@@ -66,11 +66,18 @@ async def lifespan(_: FastAPI):
     global relational_database, store
     if config.RELATIONAL_STORE_ENABLED:
         relational_database = make_relational_database()
+        schedule_updated = relational_database.sync_unstarted_schedule(
+            current_schedule()
+        )
         store = None
         log.info(
             "Using normalized relational storage for draw %s",
             relational_database.active_draw_id,
         )
+        if schedule_updated:
+            log.warning(
+                "Updated the unstarted relational draw schedule from config."
+            )
     else:
         store = make_store()
         if (
