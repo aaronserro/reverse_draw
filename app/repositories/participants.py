@@ -142,6 +142,25 @@ class ParticipantRepository(Repository):
             (self.draw_id, external_id),
         ).fetchone()
 
+    def credential_with_market_versions(
+        self, external_id: str
+    ) -> dict[str, Any] | None:
+        """Load identity and market versions in one database round trip."""
+        return self.connection.execute(
+            """
+            SELECT c.*, p.draw_id, p.display_name, p.normalized_name,
+                   p.active AS participant_active,
+                   d.version AS draw_version,
+                   d.marketplace_version,
+                   d.status AS draw_status
+            FROM holder_credentials c
+            JOIN draw_participants p ON p.id = c.participant_id
+            JOIN draws d ON d.id = p.draw_id
+            WHERE p.draw_id = %s AND c.credential_external_id = %s
+            """,
+            (self.draw_id, external_id),
+        ).fetchone()
+
     def credential_for_participant(
         self, participant_id: UUID
     ) -> dict[str, Any] | None:

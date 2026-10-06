@@ -506,10 +506,17 @@ class RelationalAPITests(unittest.TestCase):
                 "/api/trading/market",
                 headers={"If-None-Match": first.headers["etag"]},
             )
+            weak_unchanged = self.client.get(
+                "/api/trading/market",
+                headers={
+                    "If-None-Match": f'W/{first.headers["etag"]}'
+                },
+            )
 
         self.assertEqual(login.status_code, 200, login.text)
         self.assertEqual(first.status_code, 200, first.text)
         self.assertEqual(unchanged.status_code, 304, unchanged.text)
+        self.assertEqual(weak_unchanged.status_code, 304, weak_unchanged.text)
 
     def test_restart_persistence_and_missing_draw_startup_failure(self):
         with self.database.transaction() as connection:

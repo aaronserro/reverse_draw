@@ -30,11 +30,22 @@ class Results:
         self.latencies_ms: list[float] = []
         self.statuses: Counter[int] = Counter()
         self.login_failures = 0
+        self.conditional_requests = 0
+        self.etag_responses = 0
 
-    def record(self, status: int, duration_ms: float) -> None:
+    def record(
+        self,
+        status: int,
+        duration_ms: float,
+        *,
+        conditional: bool,
+        received_etag: bool,
+    ) -> None:
         with self.lock:
             self.statuses[status] += 1
             self.latencies_ms.append(duration_ms)
+            self.conditional_requests += int(conditional)
+            self.etag_responses += int(received_etag)
 
     def login_failed(self) -> None:
         with self.lock:
@@ -128,7 +139,12 @@ def run_user(
             f"{base_url}/api/trading/market",
             headers=headers,
         )
-        results.record(status, (time.perf_counter() - started) * 1000)
+        results.record(
+            status,
+            (time.perf_counter() - started) * 1000,
+            conditional=bool(etag),
+            received_etag=bool(response_headers.get("etag")),
+        )
         etag = response_headers.get("etag", etag)
         if status in {429, 503}:
             try:
@@ -200,6 +216,8 @@ def main() -> None:
         "login_failures": results.login_failures,
         "requests": len(latencies),
         "statuses": dict(sorted(results.statuses.items())),
+        "conditional_requests": results.conditional_requests,
+        "etag_responses": results.etag_responses,
         "elapsed_seconds": round(time.perf_counter() - started, 2),
         "latency_ms": {
             "mean": round(statistics.fmean(latencies), 2) if latencies else 0,

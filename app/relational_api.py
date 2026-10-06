@@ -57,6 +57,19 @@ from .services.notification_service import NotificationService
 SOURCE_PREVIEW_ROWS = 100
 
 
+def _etag_matches(if_none_match: str, current: str) -> bool:
+    """Apply weak comparison for a GET ``If-None-Match`` header."""
+    for candidate in if_none_match.split(","):
+        value = candidate.strip()
+        if value == "*":
+            return True
+        if value.startswith("W/"):
+            value = value[2:].strip()
+        if value == current:
+            return True
+    return False
+
+
 class DomainRoute(APIRoute):
     def get_route_handler(self):
         original = super().get_route_handler()
@@ -257,7 +270,7 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
 
         def load_identity(active_connection):
             repos = repositories(active_connection)
-            credential = repos.participants.credential_by_external_id(
+            credential = repos.participants.credential_with_market_versions(
                 external_id
             )
             if (
@@ -900,12 +913,12 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             current = identity(request, connection=connection)
             if current is None:
                 raise HTTPException(status_code=401, detail="Not signed in.")
-            draw = repositories(connection).draws.get()
             etag = (
-                f'"{draw["version"]}-{draw["marketplace_version"]}-'
+                f'"{current["draw_version"]}-'
+                f'{current["marketplace_version"]}-'
                 f'{current["participant_id"]}"'
             )
-            if request.headers.get("if-none-match") == etag:
+            if _etag_matches(request.headers.get("if-none-match", ""), etag):
                 return Response(
                     status_code=304,
                     headers={
