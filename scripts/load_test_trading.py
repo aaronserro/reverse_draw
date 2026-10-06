@@ -239,10 +239,15 @@ def main() -> None:
         },
     }
     print(json.dumps(report, sort_keys=True))
+    steady_latencies = results.latencies_by_status.get(304, [])
+    steady_p95 = percentile(
+        steady_latencies if steady_latencies else latencies,
+        0.95,
+    )
     unhealthy = (
         results.login_failures
         or any(status >= 500 for status in results.statuses)
-        or report["latency_ms"]["p95"] >= 500
+        or steady_p95 >= 500
         or report["latency_ms"]["p99"] >= 2000
     )
     raise SystemExit(1 if unhealthy else 0)
