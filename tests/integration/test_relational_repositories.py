@@ -76,6 +76,7 @@ class RelationalRepositoryTests(unittest.TestCase):
         self.repositories = Repositories(self.connection, self.draw_id)
 
     def tearDown(self):
+        self.connection.rollback()
         with self.connection.transaction():
             self.connection.execute(
                 "DELETE FROM draws WHERE id = %s",

@@ -168,6 +168,70 @@ class RelationalImportNotificationTests(unittest.TestCase):
         )
         return batch, payload
 
+    def test_316_recipients_cover_1000_tickets_and_finish_once(self):
+        with self.database.transaction() as connection:
+            connection.execute(
+                "UPDATE draws SET total_tickets = 1000 WHERE id = %s",
+                (self.draw_id,),
+            )
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO tickets (draw_id, ticket_number)
+                    VALUES (%s, %s)
+                    """,
+                    [
+                        (self.draw_id, number)
+                        for number in range(6, 1001)
+                    ],
+                )
+
+        rows = []
+        for ticket in range(1, 1001):
+            participant_number = ((ticket - 1) % 316) + 1
+            name = f"Participant {participant_number:03d}"
+            email = f"participant{participant_number:03d}@example.com"
+            rows.append(self._row(ticket, ticket, name, email))
+        batch = self._create_import(rows)
+        payload = self.import_service.apply_batch(
+            batch["id"],
+            mode="replace",
+            expected_version=1,
+            actor_identifier="admin",
+        )
+
+        self.assertEqual(payload["changed_tickets"], 1000)
+        self.assertEqual(payload["holder_count"], 316)
+        preview = self.notifications.preview(self.settings)
+        self.assertTrue(preview["ready"], preview)
+        self.assertEqual(preview["pending_people"], 316)
+        self.assertEqual(preview["pending_tickets"], 1000)
+
+        created = self.notifications.create_batch(self.settings)
+        batch_id = created["batch"]["id"]
+        with self.database.connection() as connection:
+            jobs = self._repositories(connection).notifications.jobs(batch_id)
+        self.assertEqual(len(jobs), 316)
+
+        client = RecordingClient()
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            outcomes = list(
+                executor.map(
+                    lambda job: self.notifications.process_job(
+                        job["id"], client
+                    ),
+                    jobs,
+                )
+            )
+
+        self.assertEqual(len(client.messages), 316)
+        self.assertTrue(
+            all(outcome["job"]["status"] == "sent" for outcome in outcomes)
+        )
+        final_preview = self.notifications.preview(self.settings)
+        self.assertEqual(final_preview["pending_people"], 0)
+        self.assertEqual(final_preview["pending_tickets"], 0)
+
     def test_import_applies_ownership_emails_credentials_and_fingerprint(self):
         batch, payload = self._apply_standard_import()
 
