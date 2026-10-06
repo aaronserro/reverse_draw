@@ -112,6 +112,58 @@ class RelationalMarketplaceTests(unittest.TestCase):
             expected_draw_version=1,
         )
 
+    def test_316_concurrent_traders_read_1000_ticket_market(self):
+        with self.database.transaction() as connection:
+            repositories = self._repositories(connection)
+            connection.execute(
+                "UPDATE draws SET total_tickets = 1000 WHERE id = %s",
+                (self.draw_id,),
+            )
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO tickets (draw_id, ticket_number)
+                    VALUES (%s, %s)
+                    """,
+                    [
+                        (self.draw_id, number)
+                        for number in range(6, 1001)
+                    ],
+                )
+            participants = repositories.participants.upsert_many(
+                [f"Scale Participant {number:03d}" for number in range(1, 317)]
+            )
+            participant_ids = [
+                participants[f"scale participant {number:03d}"]["id"]
+                for number in range(1, 317)
+            ]
+            repositories.tickets.set_owners(
+                {
+                    ticket: participant_ids[(ticket - 1) % 316]
+                    for ticket in range(1, 1001)
+                },
+                mode="replace",
+                actor_type="test",
+            )
+
+        barrier = threading.Barrier(316)
+
+        def snapshot(participant_id):
+            barrier.wait(timeout=10)
+            return self.service.snapshot(participant_id)
+
+        with ThreadPoolExecutor(max_workers=316) as executor:
+            snapshots = list(executor.map(snapshot, participant_ids))
+
+        self.assertEqual(len(snapshots), 316)
+        self.assertTrue(all(item["authenticated"] for item in snapshots))
+        self.assertTrue(
+            all(item["draw"]["total"] == 1000 for item in snapshots)
+        )
+        pool = self.database.pool.get_stats()
+        self.assertEqual(pool.get("requests_errors", 0), 0)
+        self.assertEqual(pool.get("requests_waiting", 0), 0)
+
     def test_listing_create_update_cancel_and_price_validation(self):
         with self.assertRaises(ValidationError):
             self.service.upsert_listing(
