@@ -1,12 +1,14 @@
 """Run a bounded authenticated marketplace polling load profile.
 
-The users file is a local JSON array of objects with ``name`` and ``code``.
-Never commit that file. Results contain only aggregate timings and statuses.
+Use either a local JSON array of objects with ``name`` and ``code`` or the
+interactive repeat-user mode. Never commit credentials. Results contain only
+aggregate timings and statuses.
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import http.cookiejar
 import json
 import math
@@ -142,19 +144,33 @@ def run_user(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
-    parser.add_argument("--users-file", type=Path, required=True)
+    credentials = parser.add_mutually_exclusive_group(required=True)
+    credentials.add_argument("--users-file", type=Path)
+    credentials.add_argument(
+        "--repeat-user",
+        action="store_true",
+        help=(
+            "prompt for one approved account and simulate every session with "
+            "it without storing credentials"
+        ),
+    )
     parser.add_argument("--users", type=int, default=316)
     parser.add_argument("--duration-seconds", type=float, default=600)
     parser.add_argument("--ramp-seconds", type=float, default=60)
     parser.add_argument("--poll-seconds", type=float, default=15)
     args = parser.parse_args()
 
-    users = json.loads(args.users_file.read_text(encoding="utf-8"))
-    if not isinstance(users, list) or len(users) < args.users:
-        parser.error(
-            "users-file does not contain the requested number of users"
-        )
-    selected = users[: args.users]
+    if args.repeat_user:
+        name = input("Approved participant name: ").strip()
+        code = getpass.getpass("Six-digit trading code: ").strip()
+        selected = [{"name": name, "code": code}] * args.users
+    else:
+        users = json.loads(args.users_file.read_text(encoding="utf-8"))
+        if not isinstance(users, list) or len(users) < args.users:
+            parser.error(
+                "users-file does not contain the requested number of users"
+            )
+        selected = users[: args.users]
     if any(not user.get("name") or not user.get("code") for user in selected):
         parser.error("every user requires non-empty name and code fields")
 
