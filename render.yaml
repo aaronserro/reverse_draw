@@ -13,13 +13,13 @@ services:
       - key: DATABASE_URL     # Supabase "Session pooler" connection string
         sync: false
       - key: RELATIONAL_STORE_ENABLED
-        value: "false"
+        value: "true"
       - key: ACTIVE_DRAW_ID
-        value: ""
+        value: "ad25881f-3b6a-4e82-a437-9b39f12ce9aa"
       - key: REQUIRE_DATABASE_IN_PRODUCTION
         value: "true"
       - key: MAINTENANCE_MODE
-        value: "false"
+        value: "true"
       - key: OPERATIONAL_STALE_JOB_SECONDS
         value: "1800"
       - key: OPERATIONAL_READINESS_MAX_QUERY_MS
@@ -39,7 +39,7 @@ services:
       - key: DATABASE_IDLE_TRANSACTION_TIMEOUT_MS
         value: "10000"
       - key: TRADING_ENABLED
-        value: "false"
+        value: "true"
       - key: ADMIN_PASSWORD
         sync: false
       - key: SECRET_KEY
