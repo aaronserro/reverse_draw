@@ -266,7 +266,10 @@ class RelationalImportNotificationTests(unittest.TestCase):
                 )
             ]
         )
-        with self.assertRaises(ValidationError):
+        with self.assertRaisesRegex(
+            ValidationError,
+            "Alice: Invalid source value",
+        ):
             self.import_service.apply_batch(
                 invalid["id"],
                 mode="replace",

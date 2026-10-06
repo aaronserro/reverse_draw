@@ -496,6 +496,17 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                 source_json.encode()
             ).hexdigest()
             people = context.source_people(source)
+            validation_errors = [
+                {
+                    "name": person["name"],
+                    "error": "Conflicting email addresses for participant.",
+                }
+                for person in people.values()
+                if len(person.get("emails", set())) > 1
+            ]
+            validation_errors.sort(
+                key=lambda item: str(item["name"]).casefold()
+            )
             metadata = {
                 "filename": filename,
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
@@ -551,6 +562,7 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                 "imported": len(holders),
                 "preferred_ticket_scope": scope,
                 "preferred_ticket_scope_applies": preference_scope_applies,
+                "validation_errors": validation_errors,
                 "dataframe": dataframe,
                 "people": [
                     {"name": name, "tickets": tickets}

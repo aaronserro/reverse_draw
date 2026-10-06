@@ -55,9 +55,23 @@ class ImportService:
                 raise ValidationError("The import does not contain any rows.")
             invalid = [row for row in rows if row["validation_error"]]
             if invalid:
+                details = []
+                seen = set()
+                for row in invalid:
+                    detail = (
+                        str(row["holder_name"] or f"Row {row['row_number']}")
+                        + ": "
+                        + str(row["validation_error"])
+                    )
+                    if detail not in seen:
+                        seen.add(detail)
+                        details.append(detail)
+                suffix = "; ".join(details[:10])
+                if len(details) > 10:
+                    suffix += f"; and {len(details) - 10} more"
                 raise ValidationError(
                     "Resolve every import-row validation error before "
-                    "applying."
+                    f"applying. {suffix}"
                 )
 
             mapping: dict[int, str] = {}

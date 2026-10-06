@@ -368,6 +368,7 @@
     $("uploadPreview").innerHTML = "";
     loadedImportBatchId = null;
     loadedAllocationCsv = null;
+    let hasValidationErrors = false;
     setHolderImportStatus("Reading and allocating the uploaded file…");
     try {
       const scope = preferredTicketScope();
@@ -393,14 +394,26 @@
       loadedImportBatchId = result.batch_id;
       loadedAllocationCsv = result.csv;
       csvDirty = true;
+      const validationErrors = result.validation_errors || [];
+      hasValidationErrors = validationErrors.length > 0;
       renderUploadPreview(result, file.name);
       renderSourceDataframe(result.dataframe);
       loadNotifications();
-      setHolderImportStatus(
-        `Preview ready — ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s).`,
-        "ok"
-      );
-      RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
+      if (hasValidationErrors) {
+        const details = validationErrors.slice(0, 10)
+          .map((item) => `${item.name}: ${item.error}`).join("; ");
+        const more = validationErrors.length > 10
+          ? `; and ${RD.fmt(validationErrors.length - 10)} more`
+          : "";
+        setHolderImportStatus(`Cannot save — ${details}${more}`, "err");
+        RD.toast("Resolve the listed spreadsheet email conflicts and upload it again.", true);
+      } else {
+        setHolderImportStatus(
+          `Preview ready — ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s).`,
+          "ok"
+        );
+        RD.toast(`Loaded ${RD.fmt(result.imported)} ticket(s) for ${RD.fmt(result.people.length)} holder(s) from ${file.name}. Review, then Save or Merge.`);
+      }
     } catch (e) {
       if (e.status === 401) show("login");
       else {
@@ -411,8 +424,8 @@
       label.firstChild.textContent = originalLabel;
       picker.disabled = false;
       scopeToggle.disabled = false;
-      $("saveHolders").disabled = false;
-      $("mergeHolders").disabled = false;
+      $("saveHolders").disabled = hasValidationErrors;
+      $("mergeHolders").disabled = hasValidationErrors;
       picker.value = "";
     }
   }
