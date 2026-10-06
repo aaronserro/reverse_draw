@@ -223,26 +223,63 @@ class MarketplaceRepository(Repository):
         idempotency_key: str,
         expires_at: datetime | None,
     ) -> dict[str, Any]:
+        try:
+            with self.connection.transaction():
+                inserted = self.connection.execute(
+                    """
+                    INSERT INTO purchase_requests (
+                        id, draw_id, listing_id, buyer_participant_id,
+                        offered_price_cents, idempotency_key, status,
+                        expires_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
+                    ON CONFLICT (buyer_participant_id, idempotency_key)
+                    DO NOTHING
+                    RETURNING *
+                    """,
+                    (
+                        uuid4(),
+                        self.draw_id,
+                        listing_id,
+                        buyer_id,
+                        offered_price_cents,
+                        idempotency_key,
+                        expires_at,
+                    ),
+                ).fetchone()
+            if inserted is not None:
+                return inserted
+        except Exception as error:
+            if getattr(error, "sqlstate", "") != "23505":
+                raise
+            pending = self.pending_request(listing_id, buyer_id)
+            if pending is not None:
+                return pending
+            raise ConflictError(
+                "A purchase request already exists for this listing."
+            ) from error
+
         existing = self.request_by_idempotency(buyer_id, idempotency_key)
-        if existing is not None:
-            return existing
+        if existing is None:
+            raise ConflictError("The purchase request could not be created.")
+        if (
+            existing["listing_id"] != listing_id
+            or existing["offered_price_cents"] != offered_price_cents
+        ):
+            raise ConflictError(
+                "The idempotency key was already used for another request."
+            )
+        return existing
+
+    def pending_request(
+        self, listing_id: UUID, buyer_id: UUID
+    ) -> dict[str, Any] | None:
         return self.connection.execute(
             """
-            INSERT INTO purchase_requests (
-                id, draw_id, listing_id, buyer_participant_id,
-                offered_price_cents, idempotency_key, status, expires_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, 'pending', %s)
-            RETURNING *
+            SELECT * FROM purchase_requests
+            WHERE draw_id = %s AND listing_id = %s
+              AND buyer_participant_id = %s AND status = 'pending'
             """,
-            (
-                uuid4(),
-                self.draw_id,
-                listing_id,
-                buyer_id,
-                offered_price_cents,
-                idempotency_key,
-                expires_at,
-            ),
+            (self.draw_id, listing_id, buyer_id),
         ).fetchone()
 
     def decide_request(
@@ -292,39 +329,28 @@ class MarketplaceRepository(Repository):
     def participant_requests(
         self, participant_id: UUID
     ) -> dict[str, list[dict[str, Any]]]:
-        outgoing = list(
-            self.connection.execute(
-                """
-                SELECT pr.*, t.ticket_number,
-                       seller.display_name AS seller_name
-                FROM purchase_requests pr
-                JOIN listings l ON l.id = pr.listing_id
-                JOIN tickets t ON t.id = l.ticket_id
-                JOIN draw_participants seller
-                    ON seller.id = l.seller_participant_id
-                WHERE pr.draw_id = %s AND pr.buyer_participant_id = %s
-                ORDER BY pr.created_at DESC
-                """,
-                (self.draw_id, participant_id),
-            ).fetchall()
-        )
-        incoming = list(
-            self.connection.execute(
-                """
-                SELECT pr.*, t.ticket_number,
-                       buyer.display_name AS buyer_name
-                FROM purchase_requests pr
-                JOIN listings l ON l.id = pr.listing_id
-                JOIN tickets t ON t.id = l.ticket_id
-                JOIN draw_participants buyer
-                    ON buyer.id = pr.buyer_participant_id
-                WHERE pr.draw_id = %s
-                  AND l.seller_participant_id = %s
-                ORDER BY pr.created_at DESC
-                """,
-                (self.draw_id, participant_id),
-            ).fetchall()
-        )
+        rows = self.connection.execute(
+            """
+            SELECT pr.*, t.ticket_number,
+                   buyer.display_name AS buyer_name,
+                   seller.display_name AS seller_name,
+                   (pr.buyer_participant_id = %s) AS outgoing
+            FROM purchase_requests pr
+            JOIN listings l ON l.id = pr.listing_id
+            JOIN tickets t ON t.id = l.ticket_id
+            JOIN draw_participants buyer
+                ON buyer.id = pr.buyer_participant_id
+            JOIN draw_participants seller
+                ON seller.id = l.seller_participant_id
+            WHERE pr.draw_id = %s
+              AND (pr.buyer_participant_id = %s
+                   OR l.seller_participant_id = %s)
+            ORDER BY pr.created_at DESC
+            """,
+            (participant_id, self.draw_id, participant_id, participant_id),
+        ).fetchall()
+        outgoing = [row for row in rows if row["outgoing"]]
+        incoming = [row for row in rows if not row["outgoing"]]
         return {"incoming": incoming, "outgoing": outgoing}
 
     def create_trade(
@@ -381,6 +407,15 @@ class MarketplaceRepository(Repository):
             ).fetchall()
         )
 
+    def trade_by_request(self, request_id: UUID) -> dict[str, Any] | None:
+        return self.connection.execute(
+            """
+            SELECT * FROM trades
+            WHERE draw_id = %s AND request_id = %s
+            """,
+            (self.draw_id, request_id),
+        ).fetchone()
+
     def market_summary(self) -> dict[str, Any]:
         low_ask = self.connection.execute(
             """
@@ -407,9 +442,7 @@ class MarketplaceRepository(Repository):
             """,
             (self.draw_id,),
         ).fetchone()["best_bid"]
-        trades = self.recent_trades(limit=1)
         return {
             "low_ask_cents": low_ask,
             "best_bid_cents": best_bid,
-            "last_trade": trades[0] if trades else None,
         }

@@ -97,7 +97,8 @@ required high-level order is:
 4. Run the idempotent backfill into a predetermined draw UUID.
 5. Run exact reconciliation and require zero differences.
 6. Enable relational mode while maintenance remains active and require
-  `/healthz` HTTP 200.
+  `/livez` HTTP 200 for process liveness and `/healthz` HTTP 200 for database
+  readiness.
 7. Smoke-test public, admin, trader, import, notification, and marketplace
   behavior before reopening writes and enabling trading.
 

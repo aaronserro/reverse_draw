@@ -194,6 +194,21 @@ class DrawRepository(Repository):
         )
         return int(row["version"])
 
+    def increment_marketplace_version(self) -> int:
+        row = require_row(
+            self.connection.execute(
+                """
+                UPDATE draws
+                SET marketplace_version = marketplace_version + 1
+                WHERE id = %s
+                RETURNING marketplace_version
+                """,
+                (self.draw_id,),
+            ).fetchone(),
+            f"Draw {self.draw_id} does not exist.",
+        )
+        return int(row["marketplace_version"])
+
     def set_status(self, status: str) -> None:
         if status not in {"draft", "active", "finished", "archived"}:
             raise ValidationError(f"Invalid draw status: {status}")

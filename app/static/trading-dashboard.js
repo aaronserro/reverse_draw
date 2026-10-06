@@ -10,7 +10,9 @@
 
   let config = {
     trading_enabled: true,
-    trading_poll_seconds: 5,
+    trading_poll_seconds: 15,
+    trading_poll_jitter_percent: 20,
+    trading_poll_max_backoff_seconds: 120,
     trading_min_price_cents: 100,
     trading_max_price_cents: 10000000,
   };
@@ -19,6 +21,16 @@
   let mutationInFlight = false;
   let connectionError = "";
   let pollTimer = null;
+  let pollFailures = 0;
+  let retryAfterSeconds = 0;
+  let lastRefreshAt = 0;
+  let marketEtag = "";
+  const tabId = idempotencyKey();
+  const leaderKey = "rd-trading-poll-leader";
+  const leaderLeaseMilliseconds = 30000;
+  const marketChannel = "BroadcastChannel" in globalThis
+    ? new BroadcastChannel("reverse-draw-market")
+    : null;
 
   function formatMoney(cents) {
     return cents !== null && cents !== undefined && Number.isSafeInteger(Number(cents))
@@ -216,18 +228,28 @@
   async function refreshMarket({ quiet = false } = {}) {
     if (!config.trading_enabled) return snapshot;
     if (refreshPromise) return refreshPromise;
-    refreshPromise = RD.api("/api/trading/market")
+    const headers = marketEtag ? { "If-None-Match": marketEtag } : {};
+    refreshPromise = RD.api("/api/trading/market", { headers })
       .then((data) => {
-        snapshot = data;
+        if (!data.__not_modified__) {
+          snapshot = data;
+          marketEtag = data.__etag || "";
+          marketChannel?.postMessage({ type: "snapshot", snapshot, etag: marketEtag });
+        }
         connectionError = "";
+        pollFailures = 0;
+        retryAfterSeconds = 0;
+        lastRefreshAt = Date.now();
         renderAll();
-        return data;
+        return snapshot;
       })
       .catch((error) => {
         if (error.status === 401) {
           redirectToLogin();
           return null;
         }
+        pollFailures += 1;
+        retryAfterSeconds = error.retryAfter || 0;
         connectionError = error.message || "Unable to refresh live data.";
         renderMarketState();
         if (!quiet) RD.toast(connectionError, true);
@@ -238,17 +260,19 @@
   }
 
   async function mutate(action, successMessage) {
-    if (mutationInFlight) return;
+    if (mutationInFlight) return false;
     mutationInFlight = true;
     renderAll();
     try {
       await action();
       await refreshMarket({ quiet: true });
       RD.toast(successMessage);
+      marketChannel?.postMessage({ type: "invalidate" });
+      return true;
     } catch (error) {
       if (error.status === 401) {
         redirectToLogin();
-        return;
+        return false;
       }
       if (error.status === 409) {
         await refreshMarket({ quiet: true }).catch(() => {});
@@ -258,6 +282,7 @@
       } else {
         RD.toast(error.message || "The marketplace action failed.", true);
       }
+      return false;
     } finally {
       mutationInFlight = false;
       renderAll();
@@ -267,6 +292,21 @@
   function idempotencyKey() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function purchaseKey(listingId) {
+    const key = `rd-purchase-${listingId}`;
+    let value = null;
+    try { value = sessionStorage.getItem(key); } catch (_) {}
+    if (!value) {
+      value = idempotencyKey();
+      try { sessionStorage.setItem(key, value); } catch (_) {}
+    }
+    return { storageKey: key, value };
+  }
+
+  function clearPurchaseKey(storageKey) {
+    try { sessionStorage.removeItem(storageKey); } catch (_) {}
   }
 
   $("tdListingForm").addEventListener("submit", async (event) => {
@@ -288,7 +328,6 @@
         body: {
           ticket,
           price_cents: priceCents,
-          expected_draw_version: snapshot.draw_version,
           expected_listing_version: listing?.version ?? null,
         },
       }),
@@ -321,13 +360,17 @@
         body: `Send a purchase request for ${formatMoney(listing.price_cents)}. The seller must approve before the ticket transfers.`,
         confirmText: "Send request",
       });
-      if (confirmed) await mutate(
-        () => RD.api(`/api/trading/listings/${id}/requests`, {
+      if (confirmed) {
+        const requestKey = purchaseKey(id);
+        const succeeded = await mutate(
+          () => RD.api(`/api/trading/listings/${id}/requests`, {
           method: "POST",
-          body: { idempotency_key: idempotencyKey() },
-        }),
-        "Purchase request sent."
-      );
+            body: { idempotency_key: requestKey.value },
+          }),
+          "Purchase request sent."
+        );
+        if (succeeded) clearPurchaseKey(requestKey.storageKey);
+      }
       return;
     }
     if (action === "cancel") {
@@ -343,7 +386,6 @@
         () => RD.api(`/api/trading/listings/${id}`, {
           method: "DELETE",
           body: {
-            expected_draw_version: snapshot.draw_version,
             expected_listing_version: listing.version,
           },
         }),
@@ -364,7 +406,7 @@
       if (confirmed) await mutate(
         () => RD.api(`/api/trading/requests/${id}/approve`, {
           method: "POST",
-          body: { expected_draw_version: snapshot.draw_version },
+          body: {},
         }),
         `Ticket #${request.ticket} transferred to ${request.buyer_name}.`
       );
@@ -397,7 +439,8 @@
   });
 
   $("tdSignout").addEventListener("click", async () => {
-    if (pollTimer) clearInterval(pollTimer);
+    if (pollTimer) clearTimeout(pollTimer);
+    marketChannel?.close();
     await RD.api("/api/trading/logout", { method: "POST" }).catch(() => {});
     redirectToLogin();
   });
@@ -434,14 +477,73 @@
 
   if (config.trading_enabled) {
     await refreshMarket().catch(() => {});
-    const pollMilliseconds = Math.max(1, Number(config.trading_poll_seconds) || 5) * 1000;
-    pollTimer = setInterval(() => {
-      if (!document.hidden && !mutationInFlight) refreshMarket({ quiet: true }).catch(() => {});
-    }, pollMilliseconds);
-    window.addEventListener("focus", () => refreshMarket({ quiet: true }).catch(() => {}));
-    window.addEventListener("online", () => refreshMarket({ quiet: true }).catch(() => {}));
+
+    function basePollMilliseconds() {
+      return Math.max(1, Number(config.trading_poll_seconds) || 15) * 1000;
+    }
+
+    function jitter(milliseconds) {
+      const percent = Math.max(0, Math.min(50, Number(config.trading_poll_jitter_percent) || 0));
+      return milliseconds * (1 + ((Math.random() * 2) - 1) * percent / 100);
+    }
+
+    function ownsPollLease() {
+      const now = Date.now();
+      let lease = null;
+      try { lease = JSON.parse(localStorage.getItem(leaderKey) || "null"); } catch (_) {}
+      if (!lease || lease.expiresAt <= now || lease.tabId === tabId) {
+        try {
+          localStorage.setItem(leaderKey, JSON.stringify({
+            tabId,
+            expiresAt: now + leaderLeaseMilliseconds,
+          }));
+          return true;
+        } catch (_) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function nextPollDelay() {
+      const base = basePollMilliseconds();
+      const maximum = Math.max(base, Number(config.trading_poll_max_backoff_seconds || 120) * 1000);
+      const backoff = pollFailures ? Math.min(maximum, base * (2 ** pollFailures)) : base;
+      return jitter(Math.max(backoff, retryAfterSeconds * 1000));
+    }
+
+    function schedulePoll(delay = nextPollDelay()) {
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = setTimeout(async () => {
+        if (ownsPollLease() && !document.hidden && navigator.onLine && !mutationInFlight) {
+          await refreshMarket({ quiet: true }).catch(() => {});
+        }
+        schedulePoll();
+      }, Math.max(1000, delay));
+    }
+
+    function refreshIfStale() {
+      if (!ownsPollLease() || Date.now() - lastRefreshAt < 2000) return;
+      refreshMarket({ quiet: true }).catch(() => {});
+    }
+
+    marketChannel?.addEventListener("message", (event) => {
+      if (event.data?.type === "snapshot" && !ownsPollLease()) {
+        snapshot = event.data.snapshot;
+        marketEtag = event.data.etag || "";
+        connectionError = "";
+        lastRefreshAt = Date.now();
+        renderAll();
+      } else if (event.data?.type === "invalidate" && ownsPollLease()) {
+        refreshIfStale();
+      }
+    });
+
+    schedulePoll();
+    window.addEventListener("focus", refreshIfStale);
+    window.addEventListener("online", refreshIfStale);
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) refreshMarket({ quiet: true }).catch(() => {});
+      if (!document.hidden) refreshIfStale();
     });
   }
 })();

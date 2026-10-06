@@ -5,7 +5,7 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
-    healthCheckPath: /healthz
+    healthCheckPath: /livez
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
@@ -22,6 +22,22 @@ services:
         value: "false"
       - key: OPERATIONAL_STALE_JOB_SECONDS
         value: "1800"
+      - key: OPERATIONAL_READINESS_MAX_QUERY_MS
+        value: "2000"
+      - key: DATABASE_POOL_MIN
+        value: "1"
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: "3"
+      - key: DATABASE_POOL_STARTUP_TIMEOUT_SECONDS
+        value: "30"
+      - key: DATABASE_STATEMENT_TIMEOUT_MS
+        value: "5000"
+      - key: DATABASE_LOCK_TIMEOUT_MS
+        value: "2000"
+      - key: DATABASE_IDLE_TRANSACTION_TIMEOUT_MS
+        value: "10000"
       - key: TRADING_ENABLED
         value: "false"
       - key: ADMIN_PASSWORD
@@ -37,7 +53,15 @@ services:
       - key: TRADING_REQUEST_TTL_SECONDS
         value: "86400"
       - key: TRADING_POLL_SECONDS
-        value: "5"
+        value: "15"
+      - key: TRADING_POLL_JITTER_PERCENT
+        value: "20"
+      - key: TRADING_POLL_MAX_BACKOFF_SECONDS
+        value: "120"
+      - key: TRADING_MARKET_CACHE_SECONDS
+        value: "1.5"
+      - key: TRADING_HISTORY_LIMIT
+        value: "50"
       - key: EMAIL_PROVIDER
         value: smtp
       - key: SMTP_HOST

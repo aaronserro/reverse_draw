@@ -23,6 +23,14 @@ from fastapi import (
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
+from psycopg import OperationalError
+from psycopg.errors import (
+    DeadlockDetected,
+    LockNotAvailable,
+    QueryCanceled,
+    SerializationFailure,
+)
+from psycopg_pool import PoolTimeout
 from starlette.concurrency import run_in_threadpool
 
 from . import config
@@ -67,6 +75,28 @@ class DomainRoute(APIRoute):
             except ValidationError as error:
                 raise HTTPException(
                     status_code=400, detail=str(error)
+                ) from error
+            except (DeadlockDetected, SerializationFailure) as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "The marketplace changed concurrently; refresh and "
+                        "retry."
+                    ),
+                ) from error
+            except (
+                PoolTimeout,
+                OperationalError,
+                QueryCanceled,
+                LockNotAvailable,
+            ) as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The database is temporarily busy. Please retry "
+                        "shortly."
+                    ),
+                    headers={"Retry-After": "2"},
                 ) from error
             except RepositoryError as error:
                 raise HTTPException(
@@ -145,12 +175,12 @@ class TraderLoginInput(BaseModel):
 class ListingInput(BaseModel):
     ticket: int
     price_cents: int
-    expected_draw_version: int
+    expected_draw_version: int | None = None
     expected_listing_version: int | None = None
 
 
 class CancelListingInput(BaseModel):
-    expected_draw_version: int
+    expected_draw_version: int | None = None
     expected_listing_version: int | None = None
 
 
@@ -159,7 +189,7 @@ class PurchaseInput(BaseModel):
 
 
 class ApproveInput(BaseModel):
-    expected_draw_version: int
+    expected_draw_version: int | None = None
 
 
 def create_relational_router(context: RelationalAPIContext) -> APIRouter:
@@ -214,7 +244,9 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
     def notifications() -> NotificationService:
         return NotificationService(database(), context.derive_holder_code)
 
-    def identity(request: Request) -> dict[str, Any] | None:
+    def identity(
+        request: Request, *, connection: Any | None = None
+    ) -> dict[str, Any] | None:
         token = request.cookies.get("rd_trader", "")
         parts = token.split(".")
         if len(parts) != 3:
@@ -222,9 +254,9 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
         external_id, expiration, signature = parts
         if not expiration.isdigit() or int(expiration) <= time.time():
             return None
-        db = database()
-        with db.connection() as connection:
-            repos = repositories(connection)
+
+        def load_identity(active_connection):
+            repos = repositories(active_connection)
             credential = repos.participants.credential_by_external_id(
                 external_id
             )
@@ -242,6 +274,12 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
                 return None
             return credential
 
+        if connection is not None:
+            return load_identity(connection)
+        db = database()
+        with db.connection() as owned_connection:
+            return load_identity(owned_connection)
+
     def require_trader(request: Request) -> dict[str, Any]:
         current = identity(request)
         if current is None:
@@ -253,12 +291,17 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
         report = readiness_report(
             database(),
             stale_job_seconds=config.OPERATIONAL_STALE_JOB_SECONDS,
+            maximum_query_ms=config.OPERATIONAL_READINESS_MAX_QUERY_MS,
         )
         report["maintenance"] = config.MAINTENANCE_MODE
         return JSONResponse(
             report,
             status_code=200 if report["ok"] else 503,
         )
+
+    @router.get("/livez", include_in_schema=False)
+    def live():
+        return {"ok": True}
 
     @router.get("/api/config")
     def get_config():
@@ -283,6 +326,12 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             "refresh_seconds": config.PUBLIC_REFRESH_SECONDS,
             "trading_enabled": config.TRADING_ENABLED,
             "trading_poll_seconds": config.TRADING_POLL_SECONDS,
+            "trading_poll_jitter_percent": (
+                config.TRADING_POLL_JITTER_PERCENT
+            ),
+            "trading_poll_max_backoff_seconds": (
+                config.TRADING_POLL_MAX_BACKOFF_SECONDS
+            ),
             "trading_min_price_cents": config.TRADING_MIN_PRICE_CENTS,
             "trading_max_price_cents": config.TRADING_MAX_PRICE_CENTS,
             "colors": {
@@ -844,10 +893,31 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             )
 
     @router.get("/api/trading/market")
-    def trading_market(request: Request):
-        current = require_trader(request)
+    def trading_market(request: Request, response: Response):
         _require_trading_enabled()
-        return marketplace().snapshot(current["participant_id"])
+        db = database()
+        with db.connection() as connection:
+            current = identity(request, connection=connection)
+            if current is None:
+                raise HTTPException(status_code=401, detail="Not signed in.")
+            draw = repositories(connection).draws.get()
+            etag = (
+                f'"{draw["version"]}-{draw["marketplace_version"]}-'
+                f'{current["participant_id"]}"'
+            )
+            if request.headers.get("if-none-match") == etag:
+                return Response(
+                    status_code=304,
+                    headers={
+                        "ETag": etag,
+                        "Cache-Control": "private, no-cache",
+                    },
+                )
+            payload = marketplace().snapshot(
+                current["participant_id"], connection=connection
+            )
+        response.headers["ETag"] = etag
+        return payload
 
     @router.post("/api/trading/listings", dependencies=[Depends(writable)])
     def upsert_listing(body: ListingInput, request: Request):

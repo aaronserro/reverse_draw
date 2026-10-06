@@ -4,18 +4,30 @@ const RD = {};
 
 // ---------------------------------------------------------------- network
 RD.api = async function (url, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(url, {
     credentials: "same-origin",
-    headers: opts.body ? { "Content-Type": "application/json" } : {},
     ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    headers,
+    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
+  if (res.status === 304) {
+    return { __not_modified__: true, __etag: res.headers.get("ETag") || "" };
+  }
   let data = null;
   try { data = await res.json(); } catch (_) {}
   if (!res.ok) {
     const err = new Error((data && data.detail) || `Request failed (${res.status})`);
     err.status = res.status;
+    err.retryAfter = Number(res.headers.get("Retry-After")) || 0;
     throw err;
+  }
+  if (data && typeof data === "object") {
+    Object.defineProperty(data, "__etag", {
+      value: res.headers.get("ETag") || "",
+      enumerable: false,
+    });
   }
   return data;
 };

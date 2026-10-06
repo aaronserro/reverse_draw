@@ -18,6 +18,45 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().casefold() in {"1", "true", "yes", "on"}
 
 
+def _env_int(
+    name: str,
+    default: int,
+    *,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be an integer.") from error
+    if value < minimum or (maximum is not None and value > maximum):
+        upper = f" and at most {maximum}" if maximum is not None else ""
+        raise RuntimeError(
+            f"{name} must be at least {minimum}{upper}."
+        )
+    return value
+
+
+def _env_float(
+    name: str,
+    default: float,
+    *,
+    minimum: float,
+    maximum: float,
+) -> float:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a number.") from error
+    if not minimum <= value <= maximum:
+        raise RuntimeError(
+            f"{name} must be between {minimum} and {maximum}."
+        )
+    return value
+
+
 # --- Announcement text -------------------------------------------------------
 ORG_NAME = "HOOPP Reverse Draw"      # Name on the post header
 ORG_INITIALS = "HR"                  # Text fallback when a logo cannot load
@@ -123,6 +162,34 @@ MAINTENANCE_MODE = _env_bool("MAINTENANCE_MODE")
 OPERATIONAL_STALE_JOB_SECONDS = int(
     os.getenv("OPERATIONAL_STALE_JOB_SECONDS", str(30 * 60))
 )
+OPERATIONAL_READINESS_MAX_QUERY_MS = _env_int(
+    "OPERATIONAL_READINESS_MAX_QUERY_MS", 2000, maximum=300000
+)
+
+# Pool capacity is per process. Keep total possible connections below the
+# Supabase Session-pooler allowance after multiplying by instances and workers.
+DATABASE_POOL_MIN = _env_int("DATABASE_POOL_MIN", 1, maximum=100)
+DATABASE_POOL_MAX = _env_int("DATABASE_POOL_MAX", 10, maximum=100)
+if DATABASE_POOL_MIN > DATABASE_POOL_MAX:
+    raise RuntimeError("DATABASE_POOL_MIN must not exceed DATABASE_POOL_MAX.")
+DATABASE_POOL_TIMEOUT_SECONDS = _env_float(
+    "DATABASE_POOL_TIMEOUT_SECONDS", 3.0, minimum=0.1, maximum=60.0
+)
+DATABASE_POOL_STARTUP_TIMEOUT_SECONDS = _env_float(
+    "DATABASE_POOL_STARTUP_TIMEOUT_SECONDS",
+    30.0,
+    minimum=1.0,
+    maximum=120.0,
+)
+DATABASE_STATEMENT_TIMEOUT_MS = _env_int(
+    "DATABASE_STATEMENT_TIMEOUT_MS", 5000, maximum=300000
+)
+DATABASE_LOCK_TIMEOUT_MS = _env_int(
+    "DATABASE_LOCK_TIMEOUT_MS", 2000, maximum=300000
+)
+DATABASE_IDLE_TRANSACTION_TIMEOUT_MS = _env_int(
+    "DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", 10000, maximum=300000
+)
 
 # --- Ticket marketplace ------------------------------------------------------
 # Marketplace tables may be deployed before the APIs are enabled.
@@ -132,4 +199,16 @@ TRADING_MAX_PRICE_CENTS = int(os.getenv("TRADING_MAX_PRICE_CENTS", "10000000"))
 TRADING_REQUEST_TTL_SECONDS = int(
     os.getenv("TRADING_REQUEST_TTL_SECONDS", str(24 * 60 * 60))
 )
-TRADING_POLL_SECONDS = int(os.getenv("TRADING_POLL_SECONDS", "5"))
+TRADING_POLL_SECONDS = _env_int("TRADING_POLL_SECONDS", 15, maximum=300)
+TRADING_POLL_JITTER_PERCENT = _env_int(
+    "TRADING_POLL_JITTER_PERCENT", 20, minimum=0, maximum=50
+)
+TRADING_POLL_MAX_BACKOFF_SECONDS = _env_int(
+    "TRADING_POLL_MAX_BACKOFF_SECONDS", 120, maximum=900
+)
+TRADING_MARKET_CACHE_SECONDS = _env_float(
+    "TRADING_MARKET_CACHE_SECONDS", 1.5, minimum=0.0, maximum=10.0
+)
+TRADING_HISTORY_LIMIT = _env_int(
+    "TRADING_HISTORY_LIMIT", 50, maximum=200
+)

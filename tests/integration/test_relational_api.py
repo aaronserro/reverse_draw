@@ -178,11 +178,14 @@ class RelationalAPITests(unittest.TestCase):
         return Repositories(connection, self.draw_id)
 
     def test_public_admin_config_and_health_use_persisted_draw(self):
+        live = self.client.get("/livez")
         health = self.client.get("/healthz")
         public = self.client.get("/api/state")
         admin = self.client.get("/api/admin/state")
         runtime_config = self.client.get("/api/config")
 
+        self.assertEqual(live.status_code, 200)
+        self.assertEqual(live.json(), {"ok": True})
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["storage"], "supabase-relational")
         self.assertEqual(public.json()["version"], "1")
@@ -441,7 +444,6 @@ class RelationalAPITests(unittest.TestCase):
                 json={
                     "ticket": 1,
                     "price_cents": 1200,
-                    "expected_draw_version": 1,
                 },
             )
             self.assertEqual(seller_login.status_code, 200, seller_login.text)
@@ -468,13 +470,46 @@ class RelationalAPITests(unittest.TestCase):
             request_id = purchase.json()["request_id"]
             settled = self.client.post(
                 f"/api/trading/requests/{request_id}/approve",
-                json={"expected_draw_version": 2},
+                json={},
             )
         self.assertEqual(settled.status_code, 200, settled.text)
         self.assertEqual(settled.json()["feed"][0]["ticket"], 1)
         with self.database.connection() as connection:
             owner = self._repositories(connection).tickets.by_number(1)
             self.assertEqual(owner["owner_participant_id"], buyer["id"])
+
+    def test_market_refresh_supports_etag(self):
+        with self.database.transaction() as connection:
+            repositories = self._repositories(connection)
+            participant = repositories.participants.upsert("ETag Holder")
+            material = self._credential_factory("etag holder", "ETag Holder")
+            repositories.participants.create_credential(
+                participant["id"],
+                external_id=material.external_id,
+                digest=material.digest,
+            )
+            repositories.tickets.set_owner(
+                1,
+                participant["id"],
+                reason="admin_assignment",
+                actor_type="test",
+            )
+            repositories.draws.set_status("active")
+
+        with patch.object(config, "TRADING_ENABLED", True):
+            login = self.client.post(
+                "/api/trading/login",
+                json={"name": "ETag Holder", "code": material.readable_code},
+            )
+            first = self.client.get("/api/trading/market")
+            unchanged = self.client.get(
+                "/api/trading/market",
+                headers={"If-None-Match": first.headers["etag"]},
+            )
+
+        self.assertEqual(login.status_code, 200, login.text)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(unchanged.status_code, 304, unchanged.text)
 
     def test_restart_persistence_and_missing_draw_startup_failure(self):
         with self.database.transaction() as connection:

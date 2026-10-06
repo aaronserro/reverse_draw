@@ -30,14 +30,19 @@ def ticket_status(
 def build_trader_payload(
     repositories: Repositories,
     participant_id: UUID,
+    *,
+    participant: dict[str, Any] | None = None,
+    draw: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    participant = repositories.participants.by_id(participant_id)
-    draw = repositories.draws.get()
+    participant = participant or repositories.participants.by_id(
+        participant_id
+    )
+    draw = draw or repositories.draws.get()
     stages = repositories.draws.stages()
     completed = repositories.draws.completed_rounds()
     finished = draw["status"] == "finished" or len(completed) >= len(stages)
     tickets = repositories.tickets.for_participant(participant_id)
-    active_total = len(repositories.tickets.active())
+    active_total = repositories.tickets.active_count()
     return {
         "authenticated": True,
         "name": participant["display_name"],

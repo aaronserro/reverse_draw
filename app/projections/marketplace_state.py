@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from app.repositories import Repositories
+from app import config
 
 from .trader_state import build_trader_payload
+
+
+_shared_cache: dict[tuple[str, int, int], tuple[float, dict[str, Any]]] = {}
+_shared_cache_lock = threading.Lock()
 
 
 def _iso(value: datetime | None) -> str:
@@ -74,6 +81,48 @@ def _trade_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _shared_market_payload(
+    repositories: Repositories,
+    draw: dict[str, Any],
+) -> dict[str, Any]:
+    key = (
+        str(draw["id"]),
+        int(draw["version"]),
+        int(draw["marketplace_version"]),
+    )
+    now = time.monotonic()
+    with _shared_cache_lock:
+        cached = _shared_cache.get(key)
+        if cached and now - cached[0] <= config.TRADING_MARKET_CACHE_SECONDS:
+            return cached[1]
+
+        trades = repositories.marketplace.recent_trades(
+            limit=config.TRADING_HISTORY_LIMIT
+        )
+        summary = repositories.marketplace.market_summary()
+        payload = {
+            "open_listings": [
+                _listing_payload(row)
+                for row in repositories.marketplace.open_listings()
+            ],
+            "low_ask_cents": (
+                int(summary["low_ask_cents"])
+                if summary["low_ask_cents"] is not None
+                else None
+            ),
+            "best_bid_cents": (
+                int(summary["best_bid_cents"])
+                if summary["best_bid_cents"] is not None
+                else None
+            ),
+            "last_trade": _trade_payload(trades[0]) if trades else None,
+            "feed": [_trade_payload(row) for row in trades],
+        }
+        _shared_cache.clear()
+        _shared_cache[key] = (now, payload)
+        return payload
+
+
 def build_marketplace_snapshot(
     repositories: Repositories,
     participant_id: UUID,
@@ -84,18 +133,18 @@ def build_marketplace_snapshot(
     draw = repositories.draws.get()
     participant = repositories.participants.by_id(participant_id)
     requests = repositories.marketplace.participant_requests(participant_id)
-    trades = repositories.marketplace.recent_trades(limit=50)
-    summary = repositories.marketplace.market_summary()
-    last_trade = summary["last_trade"]
     return {
-        **build_trader_payload(repositories, participant_id),
+        **build_trader_payload(
+            repositories,
+            participant_id,
+            participant=participant,
+            draw=draw,
+        ),
+        **_shared_market_payload(repositories, draw),
         "participant_id": str(participant["id"]),
         "draw_version": int(draw["version"]),
+        "marketplace_version": int(draw["marketplace_version"]),
         "draw_status": draw["status"],
-        "open_listings": [
-            _listing_payload(row)
-            for row in repositories.marketplace.open_listings()
-        ],
         "own_listings": [
             _listing_payload(row)
             for row in repositories.marketplace.participant_listings(
@@ -108,18 +157,6 @@ def build_marketplace_snapshot(
         "outgoing_requests": [
             _request_payload(row, now) for row in requests["outgoing"]
         ],
-        "low_ask_cents": (
-            int(summary["low_ask_cents"])
-            if summary["low_ask_cents"] is not None
-            else None
-        ),
-        "best_bid_cents": (
-            int(summary["best_bid_cents"])
-            if summary["best_bid_cents"] is not None
-            else None
-        ),
-        "last_trade": _trade_payload(last_trade) if last_trade else None,
-        "feed": [_trade_payload(row) for row in trades],
         "server_time": _iso(now),
     }
 

@@ -55,6 +55,7 @@ def readiness_report(
     database: Any,
     *,
     stale_job_seconds: int = 1800,
+    maximum_query_ms: int = 2000,
 ) -> dict[str, Any]:
     """Return readiness invariants without exposing private data."""
     started = time.perf_counter()
@@ -153,6 +154,17 @@ def readiness_report(
         }
         draw_summary = None
 
+    query_duration_ms = (time.perf_counter() - started) * 1000
+    pool = _pool_report(database)
+    checks["pool_capacity"] = {
+        "ok": not pool["saturated"],
+        "requests_waiting": pool["requests_waiting"],
+    }
+    checks["query_latency"] = {
+        "ok": query_duration_ms <= max(1, int(maximum_query_ms)),
+        "duration_ms": round(query_duration_ms, 2),
+        "maximum_ms": max(1, int(maximum_query_ms)),
+    }
     ok = bool(checks) and all(check["ok"] for check in checks.values())
     return {
         "ok": ok,
@@ -161,10 +173,8 @@ def readiness_report(
         "schema_version": database.required_schema_version,
         "draw": draw_summary,
         "checks": checks,
-        "pool": _pool_report(database),
-        "query_duration_ms": round(
-            (time.perf_counter() - started) * 1000, 2
-        ),
+        "pool": pool,
+        "query_duration_ms": round(query_duration_ms, 2),
     }
 
 

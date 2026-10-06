@@ -14,6 +14,16 @@ After relational writes begin, the legacy `draw_state` row is an immutable backu
 - `MAINTENANCE_MODE`: blocks writes while leaving reads available.
 - `TRADING_ENABLED`: enabled only after ownership and marketplace smoke tests.
 - `OPERATIONAL_STALE_JOB_SECONDS`: readiness threshold; default 1800.
+- `OPERATIONAL_READINESS_MAX_QUERY_MS`: maximum healthy readiness-query time;
+  default 2000.
+- `DATABASE_POOL_MIN` / `DATABASE_POOL_MAX`: per-process relational pool;
+  defaults 1 and 10.
+- `DATABASE_POOL_TIMEOUT_SECONDS`: bounded checkout wait; default 3.
+- `DATABASE_POOL_STARTUP_TIMEOUT_SECONDS`: initial remote pool warm-up wait;
+  default 30. This is deliberately longer than request checkout.
+- `DATABASE_STATEMENT_TIMEOUT_MS`, `DATABASE_LOCK_TIMEOUT_MS`, and
+  `DATABASE_IDLE_TRANSACTION_TIMEOUT_MS`: PostgreSQL safety limits; defaults
+  5000, 2000, and 10000.
 - Stable `SECRET_KEY`: required to preserve credential derivation and sessions.
 
 Do not expose any of these values to browser JavaScript or commit them to the repository.
@@ -59,6 +69,7 @@ Monitor the following in Render and Supabase:
 
 | Signal | Warning | Critical/action |
 | --- | --- | --- |
+| `/livez` | Any failure | Process is not serving; inspect Render lifecycle and startup logs |
 | `/healthz` | One 503 | Persistent 503 for two checks; keep writes disabled and inspect checks |
 | API latency | p95 above 500 ms for 5 minutes | p95 above 2 seconds or rising lock waits |
 | Pool pressure | `requests_waiting > 0` repeatedly | Sustained waiters; reduce worker concurrency or increase pool capacity safely |
@@ -71,6 +82,24 @@ Monitor the following in Render and Supabase:
 | Migration checks | Missing version or checksum mismatch | Stop deployment; never rewrite an applied migration |
 
 Structured request logs contain only method, route template, status, latency, storage mode, conflict classification, and failure classification. They intentionally omit URLs, query strings, headers, bodies, identities, and exception text.
+
+Render uses `/livez`, which performs no database checkout. `/healthz` is the
+dependency-readiness endpoint and may intentionally return 503 when PostgreSQL,
+schema invariants, query latency, or pool capacity are unhealthy. This prevents
+database pressure from creating an automatic process-restart cascade.
+
+## Connection budget
+
+`DATABASE_POOL_MAX` is not the number of participants. Compute the maximum
+possible application connections as:
+
+`Render instances × Uvicorn workers × DATABASE_POOL_MAX`
+
+The result must remain below the Supabase Session-pooler allowance after
+reserving headroom for migrations, operational SQL, backups, and other
+services. The initial production value is 10 with one instance and one worker.
+Do not increase workers or pool capacity until the 316-user profile identifies
+an actual pool bottleneck and Supabase headroom is confirmed.
 
 ## Automated readiness check
 
@@ -88,6 +117,8 @@ The command prints one JSON object and exits 0 only when:
 - No ticket references an undone round.
 - No pending email job is older than the configured threshold.
 - PostgreSQL queries succeed.
+- No request is waiting for a local pool checkout.
+- Readiness queries complete within the configured latency threshold.
 
 The report includes sanitized pool counters. It never includes connection details or private row values.
 
@@ -177,6 +208,60 @@ ORDER BY pg_total_relation_size(relid) DESC;
 
 Pool saturation is process-local and appears in `/healthz` under `pool`. Supabase connection utilization is available in the project database reports.
 
+## Trading capacity gate
+
+Keep `TRADING_ENABLED=false` while applying a new marketplace migration or
+backend/frontend contract. Apply migrations first, verify the migration ledger,
+then deploy the backend and versioned static assets.
+
+The polling load profile accepts a local, uncommitted JSON array containing
+`name` and `code` for approved test participants. Run the profile only against
+an isolated database or an announced production canary window. The script logs
+aggregate statuses and timings, never participant values.
+
+Before full enablement, run three clean repetitions at 25, 100, and 316 users.
+At 316 users require all of the following:
+
+- zero double sales and ownership/trade/audit mismatches;
+- zero HTTP 5xx while dependencies are healthy;
+- poll p95 below 500 ms and p99 below 2 seconds;
+- average pool utilization below 70% and peak below 85%;
+- no sustained pool waiters or escaped deadlocks;
+- `/livez` remains responsive and `/healthz` recovers after injected pressure.
+
+The live dashboard uses a 15-second base interval, random jitter, exponential
+backoff, conditional ETags, and one polling leader across same-browser tabs.
+Do not reduce the interval without rerunning the complete capacity profile.
+
+After every load run, reconcile marketplace state:
+
+```sql
+SELECT ticket_id, count(*)
+FROM listings
+WHERE status IN ('open', 'reserved')
+GROUP BY ticket_id
+HAVING count(*) > 1;
+
+SELECT listing_id, count(*)
+FROM trades
+GROUP BY listing_id
+HAVING count(*) > 1;
+
+SELECT request_id, count(*)
+FROM trades
+GROUP BY request_id
+HAVING count(*) > 1;
+
+SELECT tr.id
+FROM trades tr
+LEFT JOIN ticket_ownership_events event ON event.trade_id = tr.id
+WHERE tr.draw_id = ':active_draw_id'::uuid
+GROUP BY tr.id
+HAVING count(event.id) <> 1;
+```
+
+Any returned row blocks production enablement.
+
 ## Deployment sequence
 
 ### 1. Prepare the one-shot production cutover
@@ -212,7 +297,9 @@ Preserve the report and repair forward before retrying.
 5. Verify one controlled expected-version conflict returns 409.
 6. Set `MAINTENANCE_MODE=false`.
 7. Keep `TRADING_ENABLED=false` until ownership and draw checks are complete.
-8. Enable trading, then verify listing, request, approval, ownership transfer, and transaction-feed behavior with approved test participants.
+8. Verify `/livez` independently from `/healthz`.
+9. Run the 25-, 100-, and 316-user trading capacity gates.
+10. Enable trading, then verify listing, request, approval, ownership transfer, and transaction-feed behavior with approved test participants.
 
 ### 3. Immediate production smoke test
 
@@ -225,6 +312,9 @@ Preserve the report and repair forward before retrying.
 - Marketplace settlement creates one trade, one owner, and one ownership event.
 - Notification preview does not resend successful ticket/email pairs.
 - `/healthz`, logs, and Supabase reports show no waiters or failures.
+- `/livez` remains HTTP 200 during dependency pressure.
+- Marketplace-only actions increment `marketplace_version` without changing
+  the draw execution version; settlement increments both.
 
 ## Rollback and incident rules
 
@@ -242,6 +332,11 @@ Do not switch traffic back to mutable legacy JSON. Instead:
 4. Restore the relational database only from a point-in-time backup when the complete post-backup audit trail can be replayed safely.
 5. Reconcile rounds, ownership events, trades, imports, and email outcomes before reopening writes.
 6. Rotate credentials only if credential integrity is affected.
+
+For a marketplace-only incident, set `TRADING_ENABLED=false` first. This stops
+new marketplace reads and mutations while preserving trader login, ticket
+viewing, the public draw, and administrator operations. Escalate to
+`MAINTENANCE_MODE=true` only when non-marketplace writes may also be unsafe.
 
 A legacy export may be used for forensic comparison or a separately approved full restore. It is not an automatic rollback source after relational mutations.
 

@@ -2,6 +2,7 @@ import json
 import os
 import unittest
 import uuid
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -144,6 +145,7 @@ class RelationalMarketplaceTests(unittest.TestCase):
                 1,
                 2000,
                 expected_draw_version=2,
+                expected_listing_version=1,
             )
 
         snapshot = self.service.cancel_listing(
@@ -153,7 +155,8 @@ class RelationalMarketplaceTests(unittest.TestCase):
             expected_listing_version=2,
         )
         self.assertEqual(snapshot["open_listings"], [])
-        self.assertEqual(snapshot["draw_version"], 4)
+        self.assertEqual(snapshot["draw_version"], 1)
+        self.assertEqual(snapshot["marketplace_version"], 4)
 
     def test_request_is_idempotent_and_self_purchase_is_rejected(self):
         listing = self._listing()
@@ -184,6 +187,49 @@ class RelationalMarketplaceTests(unittest.TestCase):
         self.assertEqual(snapshot["best_bid_cents"], 1000)
         json.dumps(snapshot)
 
+    def test_unrelated_draw_version_does_not_block_marketplace_mutation(self):
+        listing = self.service.upsert_listing(
+            self.seller["id"],
+            1,
+            1000,
+            expected_draw_version=999,
+        )
+        updated = self.service.upsert_listing(
+            self.seller["id"],
+            1,
+            1200,
+            expected_draw_version=999,
+            expected_listing_version=listing["version"],
+        )
+        self.assertEqual(updated["version"], 2)
+        with self.database.connection() as connection:
+            draw = self._repositories(connection).draws.get()
+        self.assertEqual(draw["version"], 1)
+        self.assertEqual(draw["marketplace_version"], 3)
+
+    def test_only_one_pending_request_per_buyer_and_listing(self):
+        listing = self._listing()
+
+        def request(key):
+            return self.service.request_purchase(
+                self.buyer["id"], listing["id"], idempotency_key=key
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            requests = list(executor.map(request, ("first-key", "second-key")))
+
+        self.assertEqual(requests[0]["id"], requests[1]["id"])
+        with self.database.connection() as connection:
+            count = connection.execute(
+                """
+                SELECT count(*) AS count FROM purchase_requests
+                WHERE draw_id = %s AND listing_id = %s
+                  AND buyer_participant_id = %s AND status = 'pending'
+                """,
+                (self.draw_id, listing["id"], self.buyer["id"]),
+            ).fetchone()["count"]
+        self.assertEqual(count, 1)
+
     def test_approval_transfers_ticket_and_supersedes_competitors(self):
         listing = self._listing(price=2200)
         approved = self.service.request_purchase(
@@ -210,7 +256,8 @@ class RelationalMarketplaceTests(unittest.TestCase):
             expected_draw_version=3,
         )
 
-        self.assertEqual(snapshot["draw_version"], 4)
+        self.assertEqual(snapshot["draw_version"], 2)
+        self.assertEqual(snapshot["marketplace_version"], 6)
         self.assertEqual(snapshot["open_listings"], [])
         self.assertEqual(snapshot["feed"][0]["ticket"], 1)
         self.assertEqual(snapshot["feed"][0]["price_cents"], 2200)
@@ -229,6 +276,19 @@ class RelationalMarketplaceTests(unittest.TestCase):
         buyer_snapshot = self.service.snapshot(self.buyer["id"])
         self.assertEqual(buyer_snapshot["tickets"][0]["ticket"], 1)
         self.assertEqual(buyer_snapshot["last_trade"]["buyer_name"], "Buyer")
+
+        with self.database.transaction() as connection:
+            self._repositories(connection).draws.set_status("finished")
+        replay = self.service.approve_request(
+            self.seller["id"],
+            approved["id"],
+            expected_draw_version=1,
+        )
+        self.assertEqual(replay["feed"][0]["ticket"], 1)
+        with self.assertRaisesRegex(ConflictError, "Only the seller"):
+            self.service.approve_request(
+                self.other_buyer["id"], approved["id"]
+            )
 
     def test_simultaneous_approvals_settle_only_one_trade(self):
         listing = self._listing()
@@ -261,7 +321,107 @@ class RelationalMarketplaceTests(unittest.TestCase):
         with self.database.connection() as connection:
             repositories = self._repositories(connection)
             self.assertEqual(len(repositories.marketplace.recent_trades()), 1)
-            self.assertEqual(repositories.draws.get()["version"], 3)
+            draw = repositories.draws.get()
+            self.assertEqual(draw["version"], 2)
+            self.assertEqual(draw["marketplace_version"], 5)
+
+    def test_approval_and_cancellation_have_one_authoritative_outcome(self):
+        listing = self._listing()
+        request = self.service.request_purchase(
+            self.buyer["id"],
+            listing["id"],
+            idempotency_key="approval-cancel-race",
+        )
+        barrier = threading.Barrier(2)
+
+        def approve():
+            barrier.wait()
+            try:
+                self.service.approve_request(
+                    self.seller["id"], request["id"]
+                )
+                return "approved"
+            except ConflictError:
+                return "conflict"
+
+        def cancel():
+            barrier.wait()
+            try:
+                self.service.cancel_listing(
+                    self.seller["id"],
+                    listing["id"],
+                    expected_listing_version=listing["version"],
+                )
+                return "cancelled"
+            except ConflictError:
+                return "conflict"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            approval = executor.submit(approve)
+            cancellation = executor.submit(cancel)
+            outcomes = [approval.result(), cancellation.result()]
+
+        self.assertIn(outcomes, [
+            ["approved", "conflict"],
+            ["conflict", "cancelled"],
+        ])
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            ticket = repositories.tickets.by_number(1)
+            final_listing = repositories.marketplace.listing(listing["id"])
+            final_request = repositories.marketplace.request(request["id"])
+            trades = repositories.marketplace.recent_trades()
+        if final_listing["status"] == "sold":
+            self.assertEqual(ticket["owner_participant_id"], self.buyer["id"])
+            self.assertEqual(final_request["status"], "approved")
+            self.assertEqual(len(trades), 1)
+        else:
+            self.assertEqual(final_listing["status"], "cancelled")
+            self.assertEqual(ticket["owner_participant_id"], self.seller["id"])
+            self.assertEqual(final_request["status"], "superseded")
+            self.assertEqual(trades, [])
+
+    def test_request_and_cancellation_leave_no_pending_request(self):
+        listing = self._listing()
+        barrier = threading.Barrier(2)
+
+        def request():
+            barrier.wait()
+            try:
+                return self.service.request_purchase(
+                    self.buyer["id"],
+                    listing["id"],
+                    idempotency_key="request-cancel-race",
+                )["status"]
+            except ConflictError:
+                return "conflict"
+
+        def cancel():
+            barrier.wait()
+            self.service.cancel_listing(
+                self.seller["id"],
+                listing["id"],
+                expected_listing_version=listing["version"],
+            )
+            return "cancelled"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            request_result = executor.submit(request)
+            cancel_result = executor.submit(cancel)
+            outcomes = [request_result.result(), cancel_result.result()]
+
+        self.assertEqual(outcomes[1], "cancelled")
+        self.assertIn(outcomes[0], {"pending", "conflict"})
+        with self.database.connection() as connection:
+            pending = connection.execute(
+                """
+                SELECT count(*) AS count FROM purchase_requests
+                WHERE draw_id = %s AND listing_id = %s
+                  AND status = 'pending'
+                """,
+                (self.draw_id, listing["id"]),
+            ).fetchone()["count"]
+        self.assertEqual(pending, 0)
 
     def test_settlement_failure_rolls_back_trade_and_ownership(self):
         listing = self._listing()
@@ -296,7 +456,9 @@ class RelationalMarketplaceTests(unittest.TestCase):
                 repositories.marketplace.listing(listing["id"])["status"],
                 "open",
             )
-            self.assertEqual(repositories.draws.get()["version"], 2)
+            draw = repositories.draws.get()
+            self.assertEqual(draw["version"], 1)
+            self.assertEqual(draw["marketplace_version"], 3)
 
     def test_decline_withdraw_and_expiration_enforce_authorization(self):
         listing = self._listing()

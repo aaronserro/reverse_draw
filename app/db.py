@@ -19,6 +19,8 @@ import uuid
 from contextlib import contextmanager
 from typing import Iterator
 
+from . import config
+
 log = logging.getLogger("reverse_draw.db")
 
 SCHEMA_PG = """
@@ -84,24 +86,48 @@ class RelationalDatabase:
         url: str,
         active_draw_id: str | uuid.UUID,
         *,
-        required_schema_version: str = "008_rls",
+        required_schema_version: str = "009_marketplace_concurrency",
     ) -> None:
         from psycopg.rows import dict_row
         from psycopg_pool import ConnectionPool
 
         self.active_draw_id = uuid.UUID(str(active_draw_id))
         self.required_schema_version = required_schema_version
+
+        def configure_connection(connection) -> None:
+            connection.execute(
+                "SELECT set_config('statement_timeout', %s, false)",
+                (f"{config.DATABASE_STATEMENT_TIMEOUT_MS}ms",),
+            )
+            connection.execute(
+                "SELECT set_config('lock_timeout', %s, false)",
+                (f"{config.DATABASE_LOCK_TIMEOUT_MS}ms",),
+            )
+            connection.execute(
+                "SELECT set_config("
+                "'idle_in_transaction_session_timeout', %s, false)",
+                (f"{config.DATABASE_IDLE_TRANSACTION_TIMEOUT_MS}ms",),
+            )
+            connection.commit()
+
         self.pool = ConnectionPool(
             url,
-            min_size=1,
-            max_size=5,
+            min_size=config.DATABASE_POOL_MIN,
+            max_size=config.DATABASE_POOL_MAX,
+            timeout=config.DATABASE_POOL_TIMEOUT_SECONDS,
             open=True,
+            configure=configure_connection,
             kwargs={
                 "prepare_threshold": None,
                 "row_factory": dict_row,
             },
         )
         try:
+            # Remote poolers may need longer to establish the first TLS
+            # connection than an already-warm request may wait for checkout.
+            self.pool.wait(
+                timeout=config.DATABASE_POOL_STARTUP_TIMEOUT_SECONDS
+            )
             self.verify_ready()
         except BaseException:
             self.pool.close()

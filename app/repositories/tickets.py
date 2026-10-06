@@ -76,6 +76,17 @@ class TicketRepository(Repository):
             ).fetchall()
         )
 
+    def active_count(self) -> int:
+        row = self.connection.execute(
+            """
+            SELECT count(*) AS count
+            FROM tickets
+            WHERE draw_id = %s AND eliminated_round_id IS NULL
+            """,
+            (self.draw_id,),
+        ).fetchone()
+        return int(row["count"])
+
     def owner_map(self) -> dict[int, str]:
         rows = self.connection.execute(
             """
