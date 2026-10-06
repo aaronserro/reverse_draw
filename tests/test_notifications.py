@@ -198,6 +198,10 @@ class EmailTemplateTests(unittest.TestCase):
         self.assertIn("Website: https://draw.example.com", text_body)
         self.assertIn("See your tickets now", html_body)
         self.assertIn("https://draw.example.com/trading/login", text_body)
+        self.assertIn("Thank you for supporting United Way", html_body)
+        self.assertIn("$15,000 will be donated to United Way", html_body)
+        self.assertIn("Thank you for supporting United Way", text_body)
+        self.assertIn("$15,000 will be donated to United Way", text_body)
 
     def test_template_omits_site_code_when_public_board_is_open(self):
         _, html_body, text_body = render_ticket_email(

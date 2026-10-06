@@ -428,7 +428,8 @@ def render_ticket_email(
 </td></tr>
 <tr><td class="email-pad" style="padding:34px 38px 12px">
     <p style="margin:0 0 16px;font-size:18px;line-height:28px;color:#172534">Hello {safe_name},</p>
-    <p style="margin:0;font-size:16px;line-height:25px;color:#425466">Your new {ticket_word} for the <strong style="color:#172534">{safe_org}</strong> {allocation_verb} been allocated. Keep this email for your records.</p>
+    <p style="margin:0 0 16px;font-size:16px;line-height:25px;color:#425466">Your new {ticket_word} for the <strong style="color:#172534">{safe_org}</strong> {allocation_verb} been allocated. Keep this email for your records.</p>
+    <p style="margin:0;font-size:16px;line-height:25px;color:#425466"><strong style="color:#172534">Thank you for supporting United Way.</strong> Through this campaign, $15,000 will be donated to United Way.</p>
 </td></tr>
 <tr><td class="email-pad" align="center" style="padding:18px 38px 28px">
     <div style="margin-bottom:12px;font-size:12px;line-height:18px;letter-spacing:1.5px;text-transform:uppercase;color:#657687;font-weight:700">Your new {ticket_word}</div>
@@ -480,6 +481,8 @@ def render_ticket_email(
     text_body = (
         f"{config.ORG_NAME} — TICKET CONFIRMATION\n\n"
         f"Hello {name},\n\n"
+        "Thank you for supporting United Way. Through this campaign, "
+        "$15,000 will be donated to United Way.\n\n"
         f"You're officially in. Your new {config.ORG_NAME} {ticket_word}: "
         f"{', '.join(f'#{ticket}' for ticket in sorted(new_tickets))}\n\n"
         f"All current tickets: {all_numbers}\n"
