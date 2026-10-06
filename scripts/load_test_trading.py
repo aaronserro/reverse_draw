@@ -28,6 +28,7 @@ class Results:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.latencies_ms: list[float] = []
+        self.latencies_by_status: dict[int, list[float]] = {}
         self.statuses: Counter[int] = Counter()
         self.login_failures = 0
         self.conditional_requests = 0
@@ -44,6 +45,7 @@ class Results:
         with self.lock:
             self.statuses[status] += 1
             self.latencies_ms.append(duration_ms)
+            self.latencies_by_status.setdefault(status, []).append(duration_ms)
             self.conditional_requests += int(conditional)
             self.etag_responses += int(received_etag)
 
@@ -61,6 +63,17 @@ def percentile(values: list[float], percentile_value: float) -> float:
         min(len(ordered) - 1, math.ceil(percentile_value * len(ordered)) - 1),
     )
     return ordered[index]
+
+
+def latency_summary(values: list[float]) -> dict[str, float | int]:
+    return {
+        "requests": len(values),
+        "mean": round(statistics.fmean(values), 2) if values else 0,
+        "p50": round(percentile(values, 0.50), 2),
+        "p95": round(percentile(values, 0.95), 2),
+        "p99": round(percentile(values, 0.99), 2),
+        "maximum": round(max(values), 2) if values else 0,
+    }
 
 
 def json_request(
@@ -219,12 +232,10 @@ def main() -> None:
         "conditional_requests": results.conditional_requests,
         "etag_responses": results.etag_responses,
         "elapsed_seconds": round(time.perf_counter() - started, 2),
-        "latency_ms": {
-            "mean": round(statistics.fmean(latencies), 2) if latencies else 0,
-            "p50": round(percentile(latencies, 0.50), 2),
-            "p95": round(percentile(latencies, 0.95), 2),
-            "p99": round(percentile(latencies, 0.99), 2),
-            "maximum": round(max(latencies), 2) if latencies else 0,
+        "latency_ms": latency_summary(latencies),
+        "latency_by_status_ms": {
+            str(status): latency_summary(values)
+            for status, values in sorted(results.latencies_by_status.items())
         },
     }
     print(json.dumps(report, sort_keys=True))
