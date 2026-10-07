@@ -756,6 +756,27 @@
     URL.revokeObjectURL(url);
   };
 
+  $("downloadPeopleTable").onclick = () => {
+    const csvCell = (value) => `"${String(value).replace(/"/g, '""')}"`;
+    const rows = [
+      ["Holder", "Tickets", "Still in", "Ticket numbers", "Trading login"],
+      ...state.summary.map((person) => [
+        person.holder,
+        person.tickets.length,
+        person.still_in,
+        person.tickets.join(", "),
+        person.trading_ready ? person.trading_code : "Not generated",
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}\n`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "holders_by_person.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   $("people").addEventListener("click", async (event) => {
     const resetButton = event.target.closest("[data-reset-trading]");
     if (resetButton) {
