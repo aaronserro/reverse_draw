@@ -205,6 +205,21 @@ class ApproveInput(BaseModel):
     expected_draw_version: int | None = None
 
 
+class BuyOrderInput(BaseModel):
+    price_cents: int
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_version: int | None = None
+
+
+class CancelBuyOrderInput(BaseModel):
+    expected_version: int | None = None
+
+
+class AcceptBuyOrderInput(BaseModel):
+    ticket: int
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
 def create_relational_router(context: RelationalAPIContext) -> APIRouter:
     router = APIRouter(route_class=DomainRoute)
 
@@ -1030,6 +1045,53 @@ def create_relational_router(context: RelationalAPIContext) -> APIRouter:
             current["participant_id"], request_id
         )
         return {"request_id": str(row["id"]), "status": row["status"]}
+
+    @router.post("/api/trading/bids", dependencies=[Depends(writable)])
+    def upsert_buy_order(body: BuyOrderInput, request: Request):
+        current = require_trader(request)
+        _require_trading_enabled()
+        row = marketplace().upsert_buy_order(
+            current["participant_id"],
+            body.price_cents,
+            idempotency_key=body.idempotency_key,
+            expected_version=body.expected_version,
+        )
+        return {
+            "bid_id": str(row["id"]),
+            "status": row["status"],
+            "version": row["version"],
+        }
+
+    @router.delete(
+        "/api/trading/bids/{buy_order_id}",
+        dependencies=[Depends(writable)],
+    )
+    def cancel_buy_order(
+        buy_order_id: UUID, body: CancelBuyOrderInput, request: Request
+    ):
+        current = require_trader(request)
+        _require_trading_enabled()
+        return marketplace().cancel_buy_order(
+            current["participant_id"],
+            buy_order_id,
+            expected_version=body.expected_version,
+        )
+
+    @router.post(
+        "/api/trading/bids/{buy_order_id}/accept",
+        dependencies=[Depends(writable)],
+    )
+    def accept_buy_order(
+        buy_order_id: UUID, body: AcceptBuyOrderInput, request: Request
+    ):
+        current = require_trader(request)
+        _require_trading_enabled()
+        return marketplace().accept_buy_order(
+            current["participant_id"],
+            buy_order_id,
+            body.ticket,
+            idempotency_key=body.idempotency_key,
+        )
 
     def csv_response(text: str, filename: str) -> PlainTextResponse:
         return PlainTextResponse(

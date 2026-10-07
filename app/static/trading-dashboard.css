@@ -233,6 +233,21 @@
 }
 .td-list-hint { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
 
+.td-bids {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.td-bid-compose { padding: 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+.td-bid-compose h2 { margin: 0 0 5px; font-size: 14px; letter-spacing: .08em; }
+.td-bid-compose > p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.td-bid-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.td-bid-form label { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
+.td-bid-form .td-cancel { height: 44px; }
+.td-bid-book .td-row { grid-template-columns: minmax(0, 1fr); }
+
 /* ------------------------------------------------------------------ book + feed */
 .td-cols {
   display: grid;
@@ -386,7 +401,17 @@
 .td-decline:hover, .td-withdraw:hover { border-color: var(--danger); background: var(--danger-soft); }
 
 /* An author `display` beats the UA's [hidden] rule, so restate it here. */
-.td[hidden], .td-boot[hidden] { display: none; }
+.td[hidden], .td-boot[hidden], .td-bids[hidden] { display: none; }
+
+.td-bid-ticket {
+  min-width: 0;
+  height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: 700 11px/1 var(--td-mono);
+}
 
 .td :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
@@ -453,6 +478,9 @@
   .td-list-form { grid-template-columns: minmax(180px, .8fr) minmax(180px, .8fr) 180px; align-items: end; }
   .td-list-submit { grid-column: auto; }
   .td-list-hint { margin-left: 0; }
+
+  .td-bids { grid-template-columns: minmax(280px, .7fr) minmax(0, 1.3fr); gap: 20px; padding: 20px 28px; }
+  .td-bid-form { grid-template-columns: minmax(140px, 1fr) 130px 130px; align-items: end; }
 
   .td-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px; }
 

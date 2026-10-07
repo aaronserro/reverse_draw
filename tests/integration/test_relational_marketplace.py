@@ -239,6 +239,179 @@ class RelationalMarketplaceTests(unittest.TestCase):
         self.assertEqual(snapshot["best_bid_cents"], 1000)
         json.dumps(snapshot)
 
+    def test_buy_order_create_update_cancel(self):
+        first = self.service.upsert_buy_order(
+            self.buyer["id"],
+            1200,
+            idempotency_key="bid-create",
+        )
+        replay = self.service.upsert_buy_order(
+            self.buyer["id"],
+            1200,
+            idempotency_key="bid-create",
+        )
+        self.assertEqual(replay["id"], first["id"])
+        updated = self.service.upsert_buy_order(
+            self.buyer["id"],
+            1500,
+            idempotency_key="bid-update",
+            expected_version=first["version"],
+        )
+        self.assertEqual(updated["id"], first["id"])
+        self.assertEqual(updated["price_cents"], 1500)
+        self.service.cancel_buy_order(
+            self.buyer["id"],
+            first["id"],
+            expected_version=updated["version"],
+        )
+        with self.database.connection() as connection:
+            order = self._repositories(connection).marketplace.buy_order(
+                first["id"]
+            )
+        self.assertEqual(order["status"], "cancelled")
+
+    def test_accept_buy_order_transfers_ticket_and_invalidates_listing(self):
+        listing = self._listing(price=2000)
+        order = self.service.upsert_buy_order(
+            self.buyer["id"],
+            1700,
+            idempotency_key="bid-to-fill",
+        )
+        snapshot = self.service.accept_buy_order(
+            self.seller["id"],
+            order["id"],
+            1,
+            idempotency_key="accept-bid",
+        )
+        self.assertEqual(snapshot["draw_version"], 2)
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            ticket = repositories.tickets.by_number(1)
+            filled = repositories.marketplace.buy_order(order["id"])
+            fill = repositories.marketplace.buy_order_fill(order["id"])
+            events = repositories.tickets.ownership_events(ticket["id"])
+            closed_listing = repositories.marketplace.listing(listing["id"])
+        self.assertEqual(ticket["owner_participant_id"], self.buyer["id"])
+        self.assertEqual(filled["status"], "filled")
+        self.assertEqual(closed_listing["status"], "invalidated")
+        self.assertEqual(fill["ownership_event_id"], events[-1]["id"])
+        self.assertEqual(events[-1]["reason"], "trade")
+        self.assertIsNone(events[-1]["trade_id"])
+
+        replay = self.service.accept_buy_order(
+            self.seller["id"],
+            order["id"],
+            1,
+            idempotency_key="accept-bid",
+        )
+        self.assertEqual(replay["draw_version"], 2)
+
+    def test_two_sellers_cannot_fill_one_buy_order(self):
+        with self.database.transaction() as connection:
+            self._repositories(connection).tickets.set_owner(
+                2,
+                self.other_buyer["id"],
+                reason="admin_assignment",
+                actor_type="test",
+            )
+        order = self.service.upsert_buy_order(
+            self.buyer["id"],
+            1800,
+            idempotency_key="single-fill-bid",
+        )
+        barrier = threading.Barrier(2)
+
+        def accept(seller_id, ticket, key):
+            barrier.wait()
+            try:
+                self.service.accept_buy_order(
+                    seller_id,
+                    order["id"],
+                    ticket,
+                    idempotency_key=key,
+                )
+                return "settled"
+            except ConflictError:
+                return "conflict"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(
+                lambda arguments: accept(*arguments),
+                (
+                    (self.seller["id"], 1, "seller-one"),
+                    (self.other_buyer["id"], 2, "seller-two"),
+                ),
+            ))
+        self.assertCountEqual(outcomes, ["settled", "conflict"])
+        with self.database.connection() as connection:
+            count = connection.execute(
+                """
+                SELECT count(*) AS count FROM buy_order_fills
+                WHERE buy_order_id = %s
+                """,
+                (order["id"],),
+            ).fetchone()["count"]
+        self.assertEqual(count, 1)
+
+    def test_listing_purchase_and_buy_bid_acceptance_cannot_both_settle(self):
+        listing = self._listing(price=1900)
+        request = self.service.request_purchase(
+            self.buyer["id"],
+            listing["id"],
+            idempotency_key="listed-ticket-request",
+        )
+        order = self.service.upsert_buy_order(
+            self.other_buyer["id"],
+            1800,
+            idempotency_key="competing-general-bid",
+        )
+        barrier = threading.Barrier(2)
+
+        def approve_listing():
+            barrier.wait()
+            try:
+                self.service.approve_request(
+                    self.seller["id"], request["id"]
+                )
+                return "listing"
+            except ConflictError:
+                return "conflict"
+
+        def accept_bid():
+            barrier.wait()
+            try:
+                self.service.accept_buy_order(
+                    self.seller["id"],
+                    order["id"],
+                    1,
+                    idempotency_key="competing-bid-acceptance",
+                )
+                return "bid"
+            except ConflictError:
+                return "conflict"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            listing_result = executor.submit(approve_listing)
+            bid_result = executor.submit(accept_bid)
+            outcomes = [listing_result.result(), bid_result.result()]
+        self.assertIn(outcomes, [["listing", "conflict"], ["conflict", "bid"]])
+        with self.database.connection() as connection:
+            repositories = self._repositories(connection)
+            ticket = repositories.tickets.by_number(1)
+            trade_count = len(repositories.marketplace.recent_trades())
+            fill_count = connection.execute(
+                """
+                SELECT count(*) AS count FROM buy_order_fills
+                WHERE buy_order_id = %s
+                """,
+                (order["id"],),
+            ).fetchone()["count"]
+        self.assertIn(
+            ticket["owner_participant_id"],
+            {self.buyer["id"], self.other_buyer["id"]},
+        )
+        self.assertEqual(trade_count + fill_count, 1)
+
     def test_unrelated_draw_version_does_not_block_marketplace_mutation(self):
         listing = self.service.upsert_listing(
             self.seller["id"],

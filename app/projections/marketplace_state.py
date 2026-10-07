@@ -81,6 +81,35 @@ def _trade_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _buy_order_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(row["id"]),
+        "buyer_id": str(row["buyer_participant_id"]),
+        "buyer_name": row.get("buyer_name", ""),
+        "price_cents": int(row["price_cents"]),
+        "status": row["status"],
+        "version": int(row["version"]),
+        "created_at": _iso(row["created_at"]),
+        "updated_at": _iso(row["updated_at"]),
+        "closed_at": _iso(row.get("closed_at")),
+    }
+
+
+def _buy_order_fill_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(row["id"]),
+        "buy_order_id": str(row["buy_order_id"]),
+        "ticket": int(row["ticket_number"]),
+        "seller_id": str(row["seller_participant_id"]),
+        "seller_name": row["seller_name"],
+        "buyer_id": str(row["buyer_participant_id"]),
+        "buyer_name": row["buyer_name"],
+        "price_cents": int(row["price_cents"]),
+        "status": "settled",
+        "executed_at": _iso(row["executed_at"]),
+    }
+
+
 def _shared_market_payload(
     repositories: Repositories,
     draw: dict[str, Any],
@@ -99,7 +128,15 @@ def _shared_market_payload(
         trades = repositories.marketplace.recent_trades(
             limit=config.TRADING_HISTORY_LIMIT
         )
+        buy_orders = repositories.marketplace.open_buy_orders()
+        buy_fills = repositories.marketplace.recent_buy_order_fills(
+            limit=config.TRADING_HISTORY_LIMIT
+        )
         summary = repositories.marketplace.market_summary()
+        feed = [_trade_payload(row) for row in trades]
+        feed.extend(_buy_order_fill_payload(row) for row in buy_fills)
+        feed.sort(key=lambda item: item["executed_at"], reverse=True)
+        feed = feed[: config.TRADING_HISTORY_LIMIT]
         payload = {
             "open_listings": [
                 _listing_payload(row)
@@ -115,8 +152,11 @@ def _shared_market_payload(
                 if summary["best_bid_cents"] is not None
                 else None
             ),
-            "last_trade": _trade_payload(trades[0]) if trades else None,
-            "feed": [_trade_payload(row) for row in trades],
+            "open_buy_orders": [
+                _buy_order_payload(row) for row in buy_orders
+            ],
+            "last_trade": feed[0] if feed else None,
+            "feed": feed,
         }
         _shared_cache.clear()
         _shared_cache[key] = (now, payload)
@@ -133,6 +173,9 @@ def build_marketplace_snapshot(
     draw = repositories.draws.get()
     participant = repositories.participants.by_id(participant_id)
     requests = repositories.marketplace.participant_requests(participant_id)
+    participant_buy_orders = (
+        repositories.marketplace.participant_buy_orders(participant_id)
+    )
     return {
         **build_trader_payload(
             repositories,
@@ -145,6 +188,9 @@ def build_marketplace_snapshot(
         "draw_version": int(draw["version"]),
         "marketplace_version": int(draw["marketplace_version"]),
         "draw_status": draw["status"],
+        "own_buy_orders": [
+            _buy_order_payload(row) for row in participant_buy_orders
+        ],
         "own_listings": [
             _listing_payload(row)
             for row in repositories.marketplace.participant_listings(

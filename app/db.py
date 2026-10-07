@@ -86,7 +86,7 @@ class RelationalDatabase:
         url: str,
         active_draw_id: str | uuid.UUID,
         *,
-        required_schema_version: str = "009_marketplace_concurrency",
+        required_schema_version: str = "010_buy_orders",
     ) -> None:
         from psycopg.rows import dict_row
         from psycopg_pool import ConnectionPool

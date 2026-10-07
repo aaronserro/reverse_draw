@@ -56,6 +56,10 @@
     return activeOwnListings().find((listing) => listing.ticket === Number(ticket));
   }
 
+  function openOwnBuyOrder() {
+    return (snapshot?.own_buy_orders || []).find((order) => order.status === "open") || null;
+  }
+
   function pendingOutgoingByListing() {
     return new Map(
       (snapshot?.outgoing_requests || [])
@@ -189,6 +193,44 @@
     }).join("");
   }
 
+  function renderBuyBids() {
+    const section = $("tdBidsSection");
+    section.hidden = false;
+    const ownOrder = openOwnBuyOrder();
+    const activeTickets = (snapshot.tickets || []).filter((ticket) => ticket.active);
+    const disabled = mutationInFlight || !marketIsOpen();
+    $("tdBidPrice").disabled = disabled;
+    $("tdBidSubmit").disabled = disabled;
+    $("tdBidSubmit").textContent = ownOrder ? "UPDATE BID" : "POST BID";
+    $("tdBidCancel").hidden = !ownOrder;
+    $("tdBidCancel").disabled = mutationInFlight;
+    if (ownOrder && document.activeElement !== $("tdBidPrice")) {
+      $("tdBidPrice").value = (ownOrder.price_cents / 100).toFixed(2);
+    }
+    $("tdBidHint").textContent = ownOrder
+      ? `Your open bid is ${formatMoney(ownOrder.price_cents)}. Payment is handled outside the platform.`
+      : "Post one open bid to buy any active ticket. Payment is handled outside the platform.";
+
+    const orders = snapshot.open_buy_orders || [];
+    $("tdBidBook").innerHTML = orders.map((order) => {
+      const own = order.buyer_id === snapshot.participant_id;
+      let action = `<span class="td-sent">YOUR BID</span>`;
+      if (!own && activeTickets.length) {
+        const options = activeTickets.map((ticket) =>
+          `<option value="${ticket.ticket}">Ticket #${ticket.ticket}</option>`
+        ).join("");
+        action = `<select class="td-bid-ticket" aria-label="Ticket to sell">${options}</select>` +
+          `<button class="td-sell${order.price_cents === snapshot.best_bid_cents ? " best" : ""}" type="button" data-action="accept-bid" data-id="${esc(order.id)}" ${disabled ? "disabled" : ""}>SELL ${formatMoney(order.price_cents)}</button>`;
+      } else if (!own) {
+        action = `<span class="td-sent">NO ACTIVE TICKET</span>`;
+      }
+      return `<div class="td-row"><div class="td-row-main"><div class="td-row-top">` +
+        `<span class="td-name">${esc(own ? "Your buy bid" : order.buyer_name)}</span>` +
+        `<span class="td-chips"><span class="td-chip">${formatMoney(order.price_cents)}</span></span>` +
+        `</div></div><div class="td-act">${action}</div></div>`;
+    }).join("") || `<div class="td-row"><span class="td-empty">No open buy bids.</span></div>`;
+  }
+
   function renderFeed() {
     const cards = [];
     (snapshot.incoming_requests || [])
@@ -218,6 +260,7 @@
     renderMarketState();
     syncListingForm();
     renderBook();
+    renderBuyBids();
     renderFeed();
   }
 
@@ -342,6 +385,49 @@
     updateListingFormState();
   });
 
+  $("tdBidForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const priceCents = parseMoney($("tdBidPrice").value);
+    if (priceCents === null) {
+      RD.toast("Enter a valid bid with no more than two decimal places.", true);
+      return;
+    }
+    if (priceCents < config.trading_min_price_cents || priceCents > config.trading_max_price_cents) {
+      RD.toast(`Bid must be between ${formatMoney(config.trading_min_price_cents)} and ${formatMoney(config.trading_max_price_cents)}.`, true);
+      return;
+    }
+    const order = openOwnBuyOrder();
+    await mutate(
+      () => RD.api("/api/trading/bids", {
+        method: "POST",
+        body: {
+          price_cents: priceCents,
+          idempotency_key: idempotencyKey(),
+          expected_version: order?.version ?? null,
+        },
+      }),
+      order ? "Buy bid updated." : "Buy bid posted."
+    );
+  });
+
+  $("tdBidCancel").addEventListener("click", async () => {
+    const order = openOwnBuyOrder();
+    if (!order) return refreshMarket();
+    const confirmed = await RD.confirm({
+      title: "Cancel your buy bid?",
+      body: `Remove your open bid of ${formatMoney(order.price_cents)}.`,
+      confirmText: "Cancel bid",
+      danger: true,
+    });
+    if (confirmed) await mutate(
+      () => RD.api(`/api/trading/bids/${order.id}`, {
+        method: "DELETE",
+        body: { expected_version: order.version },
+      }),
+      "Buy bid canceled."
+    );
+  });
+
   async function handleAction(button) {
     const action = button.dataset.action;
     const id = button.dataset.id;
@@ -350,6 +436,25 @@
       $("tdListTicket").dispatchEvent(new Event("change"));
       $("tdListPrice").focus();
       $("tdListingForm").scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (action === "accept-bid") {
+      const order = (snapshot.open_buy_orders || []).find((row) => row.id === id);
+      const ticket = Number(button.parentElement.querySelector(".td-bid-ticket")?.value);
+      if (!order || !ticket) return refreshMarket();
+      const confirmed = await RD.confirm({
+        title: `Sell ticket #${ticket} to ${order.buyer_name}?`,
+        body: `This transfers ticket #${ticket} for ${formatMoney(order.price_cents)}. You and the buyer must arrange payment outside this platform.`,
+        confirmText: "Transfer ticket",
+        danger: true,
+      });
+      if (confirmed) await mutate(
+        () => RD.api(`/api/trading/bids/${id}/accept`, {
+          method: "POST",
+          body: { ticket, idempotency_key: idempotencyKey() },
+        }),
+        `Ticket #${ticket} transferred to ${order.buyer_name}.`
+      );
       return;
     }
     if (action === "request") {
@@ -429,7 +534,7 @@
     }
   }
 
-  [$("tdBook"), $("tdFeed")].forEach((container) => {
+  [$("tdBook"), $("tdBidBook"), $("tdFeed")].forEach((container) => {
     container.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
       if (button && !button.disabled) handleAction(button).catch((error) => {

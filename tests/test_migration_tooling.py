@@ -86,6 +86,26 @@ class MigrationDiscoveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid migration"):
                 discover_migrations(root)
 
+    def test_buy_order_migration_cannot_rewrite_existing_allocations(self):
+        migration = (
+            Path(__file__).resolve().parents[1]
+            / "migrations"
+            / "010_buy_orders.sql"
+        ).read_text(encoding="utf-8").lower()
+        destructive = (
+            "update tickets",
+            "delete from tickets",
+            "truncate",
+            "alter table tickets",
+            "update draw_participants",
+            "delete from draw_participants",
+            "alter table ticket_ownership_events",
+            "update listings",
+            "delete from listings",
+        )
+        for statement in destructive:
+            self.assertNotIn(statement, migration)
+
 
 class LegacyExportTests(unittest.TestCase):
     def test_export_contains_independent_artifacts_and_checksums(self):

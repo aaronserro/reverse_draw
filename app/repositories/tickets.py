@@ -196,6 +196,44 @@ class TicketRepository(Repository):
         )
         return True
 
+    def transfer_for_buy_order(
+        self,
+        ticket_number: int,
+        participant_id: UUID,
+        *,
+        actor_identifier: str,
+    ) -> UUID:
+        """Transfer a locked ticket and return its immutable audit event ID."""
+        ticket = self.by_number(ticket_number, lock=True)
+        previous = ticket["owner_participant_id"]
+        if previous == participant_id:
+            raise ValidationError("A seller cannot buy their own ticket.")
+        self.connection.execute(
+            """
+            UPDATE tickets
+            SET owner_participant_id = %s
+            WHERE id = %s
+            """,
+            (participant_id, ticket["id"]),
+        )
+        event = self.connection.execute(
+            """
+            INSERT INTO ticket_ownership_events (
+                draw_id, ticket_id, from_participant_id,
+                to_participant_id, reason, actor_type, actor_identifier
+            ) VALUES (%s, %s, %s, %s, 'trade', 'trader', %s)
+            RETURNING id
+            """,
+            (
+                self.draw_id,
+                ticket["id"],
+                previous,
+                participant_id,
+                actor_identifier,
+            ),
+        ).fetchone()
+        return event["id"]
+
     def set_owners(
         self,
         assignments: dict[int, UUID],

@@ -328,6 +328,170 @@ class MarketplaceService:
             repositories.draws.increment_marketplace_version()
             return dict(repositories.marketplace.request(request_id))
 
+    @retry_transaction
+    def upsert_buy_order(
+        self,
+        buyer_id: UUID,
+        price_cents: int,
+        *,
+        idempotency_key: str,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        price = self._validate_price(price_cents)
+        key = self._validate_idempotency_key(idempotency_key)
+        with self.database.transaction() as connection:
+            repositories = Repositories(
+                connection, self.database.active_draw_id
+            )
+            draw = repositories.draws.lock()
+            self._require_market_open(draw)
+            buyer = repositories.participants.by_id(buyer_id)
+            if not buyer["active"]:
+                raise ConflictError("The participant is not active.")
+            replay = repositories.marketplace.buy_order_by_idempotency(
+                buyer_id, key
+            )
+            if replay is not None:
+                if replay["price_cents"] != price:
+                    raise ConflictError(
+                        "The idempotency key was already used for another bid."
+                    )
+                return dict(replay)
+            existing = repositories.marketplace.open_buy_order_for_buyer(
+                buyer_id, lock=True
+            )
+            if existing is None:
+                if expected_version is not None:
+                    raise ConflictError("The buy bid no longer exists.")
+                order = repositories.marketplace.create_buy_order(
+                    buyer_id=buyer_id,
+                    price_cents=price,
+                    idempotency_key=key,
+                )
+            else:
+                order = repositories.marketplace.update_buy_order(
+                    existing["id"],
+                    price_cents=price,
+                    idempotency_key=key,
+                    expected_version=expected_version,
+                )
+            repositories.draws.increment_marketplace_version()
+            return dict(order)
+
+    @retry_transaction
+    def cancel_buy_order(
+        self,
+        buyer_id: UUID,
+        buy_order_id: UUID,
+        *,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        with self.database.transaction() as connection:
+            repositories = Repositories(
+                connection, self.database.active_draw_id
+            )
+            repositories.draws.lock()
+            order = repositories.marketplace.buy_order(
+                buy_order_id, lock=True
+            )
+            if order["buyer_participant_id"] != buyer_id:
+                raise ConflictError("Only the buyer can cancel this bid.")
+            if (
+                expected_version is not None
+                and order["version"] != expected_version
+            ):
+                raise ConflictError("The buy bid changed; refresh and retry.")
+            repositories.marketplace.close_buy_order(
+                buy_order_id, status="cancelled", closed_at=now
+            )
+            repositories.draws.increment_marketplace_version()
+            return build_marketplace_snapshot(
+                repositories, buyer_id, server_time=now
+            )
+
+    @retry_transaction
+    def accept_buy_order(
+        self,
+        seller_id: UUID,
+        buy_order_id: UUID,
+        ticket_number: int,
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        key = self._validate_idempotency_key(idempotency_key)
+        now = datetime.now(timezone.utc)
+        with self.database.transaction() as connection:
+            repositories = Repositories(
+                connection, self.database.active_draw_id
+            )
+            draw = repositories.draws.lock()
+            order = repositories.marketplace.buy_order(
+                buy_order_id, lock=True
+            )
+            if order["status"] == "filled":
+                fill = repositories.marketplace.buy_order_fill(buy_order_id)
+                if (
+                    fill is not None
+                    and fill["seller_participant_id"] == seller_id
+                    and fill["idempotency_key"] == key
+                ):
+                    return build_marketplace_snapshot(
+                        repositories, seller_id, server_time=now
+                    )
+                raise ConflictError("The buy bid has already been filled.")
+            self._require_market_open(draw)
+            if order["status"] != "open":
+                raise ConflictError("The buy bid is no longer open.")
+            if order["buyer_participant_id"] == seller_id:
+                raise ConflictError("A buyer cannot fill their own bid.")
+            ticket = repositories.tickets.by_number(
+                ticket_number, lock=True
+            )
+            active_listing = self._active_listing_for_ticket(
+                connection, ticket["id"], lock=True
+            )
+            seller = repositories.participants.by_id(seller_id)
+            buyer = repositories.participants.by_id(
+                order["buyer_participant_id"]
+            )
+            if not seller["active"] or not buyer["active"]:
+                raise ConflictError(
+                    "Both marketplace participants must remain active."
+                )
+            if ticket["owner_participant_id"] != seller_id:
+                raise ConflictError(
+                    "Only the current owner can sell this ticket."
+                )
+            if ticket["eliminated_round_id"] is not None:
+                raise ConflictError("An eliminated ticket cannot be sold.")
+
+            event_id = repositories.tickets.transfer_for_buy_order(
+                ticket_number,
+                order["buyer_participant_id"],
+                actor_identifier=str(seller_id),
+            )
+            repositories.marketplace.create_buy_order_fill(
+                buy_order_id=buy_order_id,
+                ticket_id=ticket["id"],
+                seller_id=seller_id,
+                buyer_id=order["buyer_participant_id"],
+                ownership_event_id=event_id,
+                price_cents=order["price_cents"],
+                idempotency_key=key,
+                executed_at=now,
+            )
+            repositories.marketplace.close_buy_order(
+                buy_order_id, status="filled", closed_at=now
+            )
+            if active_listing is not None:
+                repositories.marketplace.invalidate_ticket(ticket["id"], now)
+            repositories.draws.increment_version()
+            repositories.draws.increment_marketplace_version()
+            return build_marketplace_snapshot(
+                repositories, seller_id, server_time=now
+            )
+
     def snapshot(
         self, participant_id: UUID, *, connection: Any | None = None
     ) -> dict[str, Any]:
@@ -356,6 +520,15 @@ class MarketplaceService:
                 "The listing price is outside the configured limits."
             )
         return price
+
+    @staticmethod
+    def _validate_idempotency_key(value: str) -> str:
+        key = value.strip()
+        if not key or len(key) > 200:
+            raise ValidationError(
+                "An idempotency key of at most 200 characters is required."
+            )
+        return key
 
     @staticmethod
     def _require_market_open(draw: dict[str, Any]) -> None:

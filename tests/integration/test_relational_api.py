@@ -478,6 +478,74 @@ class RelationalAPITests(unittest.TestCase):
             owner = self._repositories(connection).tickets.by_number(1)
             self.assertEqual(owner["owner_participant_id"], buyer["id"])
 
+    def test_buy_bid_routes_transfer_seller_selected_ticket(self):
+        with self.database.transaction() as connection:
+            repositories = self._repositories(connection)
+            seller = repositories.participants.upsert("Bid Seller")
+            buyer = repositories.participants.upsert("Bid Buyer")
+            seller_material = self._credential_factory(
+                "bid seller", "Bid Seller"
+            )
+            buyer_material = self._credential_factory(
+                "bid buyer", "Bid Buyer"
+            )
+            repositories.participants.create_credential(
+                seller["id"],
+                external_id=seller_material.external_id,
+                digest=seller_material.digest,
+            )
+            repositories.participants.create_credential(
+                buyer["id"],
+                external_id=buyer_material.external_id,
+                digest=buyer_material.digest,
+            )
+            repositories.tickets.set_owner(
+                2,
+                seller["id"],
+                reason="admin_assignment",
+                actor_type="test",
+            )
+            repositories.draws.set_status("active")
+
+        with patch.object(config, "TRADING_ENABLED", True):
+            buyer_login = self.client.post(
+                "/api/trading/login",
+                json={
+                    "name": "Bid Buyer",
+                    "code": buyer_material.readable_code,
+                },
+            )
+            bid = self.client.post(
+                "/api/trading/bids",
+                json={
+                    "price_cents": 1400,
+                    "idempotency_key": "api-buy-bid",
+                },
+            )
+            self.assertEqual(buyer_login.status_code, 200, buyer_login.text)
+            self.assertEqual(bid.status_code, 200, bid.text)
+
+            self.client.cookies.clear()
+            seller_login = self.client.post(
+                "/api/trading/login",
+                json={
+                    "name": "Bid Seller",
+                    "code": seller_material.readable_code,
+                },
+            )
+            settled = self.client.post(
+                f'/api/trading/bids/{bid.json()["bid_id"]}/accept',
+                json={
+                    "ticket": 2,
+                    "idempotency_key": "api-accept-bid",
+                },
+            )
+        self.assertEqual(seller_login.status_code, 200, seller_login.text)
+        self.assertEqual(settled.status_code, 200, settled.text)
+        with self.database.connection() as connection:
+            owner = self._repositories(connection).tickets.by_number(2)
+        self.assertEqual(owner["owner_participant_id"], buyer["id"])
+
     def test_market_refresh_supports_etag(self):
         with self.database.transaction() as connection:
             repositories = self._repositories(connection)

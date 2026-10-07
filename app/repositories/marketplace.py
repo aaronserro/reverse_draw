@@ -416,6 +416,211 @@ class MarketplaceRepository(Repository):
             (self.draw_id, request_id),
         ).fetchone()
 
+    def buy_order(
+        self, buy_order_id: UUID, *, lock: bool = False
+    ) -> dict[str, Any]:
+        suffix = "FOR UPDATE OF bo" if lock else ""
+        return require_row(
+            self.connection.execute(
+                f"""
+                SELECT bo.*, buyer.display_name AS buyer_name
+                FROM buy_orders bo
+                JOIN draw_participants buyer
+                  ON buyer.id = bo.buyer_participant_id
+                WHERE bo.id = %s AND bo.draw_id = %s
+                {suffix}
+                """,
+                (buy_order_id, self.draw_id),
+            ).fetchone(),
+            "Buy bid not found.",
+        )
+
+    def open_buy_orders(self) -> list[dict[str, Any]]:
+        return list(
+            self.connection.execute(
+                """
+                SELECT bo.*, buyer.display_name AS buyer_name
+                FROM buy_orders bo
+                JOIN draw_participants buyer
+                  ON buyer.id = bo.buyer_participant_id
+                WHERE bo.draw_id = %s AND bo.status = 'open'
+                  AND buyer.active
+                ORDER BY bo.price_cents DESC, bo.created_at, bo.id
+                """,
+                (self.draw_id,),
+            ).fetchall()
+        )
+
+    def participant_buy_orders(
+        self, participant_id: UUID
+    ) -> list[dict[str, Any]]:
+        return list(
+            self.connection.execute(
+                """
+                SELECT * FROM buy_orders
+                WHERE draw_id = %s AND buyer_participant_id = %s
+                ORDER BY created_at DESC, id DESC
+                """,
+                (self.draw_id, participant_id),
+            ).fetchall()
+        )
+
+    def open_buy_order_for_buyer(
+        self, buyer_id: UUID, *, lock: bool = False
+    ) -> dict[str, Any] | None:
+        suffix = "FOR UPDATE" if lock else ""
+        return self.connection.execute(
+            f"""
+            SELECT * FROM buy_orders
+            WHERE draw_id = %s AND buyer_participant_id = %s
+              AND status = 'open'
+            {suffix}
+            """,
+            (self.draw_id, buyer_id),
+        ).fetchone()
+
+    def buy_order_by_idempotency(
+        self, buyer_id: UUID, idempotency_key: str
+    ) -> dict[str, Any] | None:
+        return self.connection.execute(
+            """
+            SELECT * FROM buy_orders
+            WHERE draw_id = %s AND buyer_participant_id = %s
+              AND idempotency_key = %s
+            """,
+            (self.draw_id, buyer_id, idempotency_key),
+        ).fetchone()
+
+    def create_buy_order(
+        self, *, buyer_id: UUID, price_cents: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        try:
+            return self.connection.execute(
+                """
+                INSERT INTO buy_orders (
+                    id, draw_id, buyer_participant_id, price_cents,
+                    idempotency_key, status
+                ) VALUES (%s, %s, %s, %s, %s, 'open')
+                RETURNING *
+                """,
+                (
+                    uuid4(), self.draw_id, buyer_id, price_cents,
+                    idempotency_key,
+                ),
+            ).fetchone()
+        except Exception as error:
+            if getattr(error, "sqlstate", "") == "23505":
+                raise ConflictError(
+                    "The buyer already has an open bid."
+                ) from error
+            raise
+
+    def update_buy_order(
+        self,
+        buy_order_id: UUID,
+        *,
+        price_cents: int,
+        idempotency_key: str,
+        expected_version: int | None,
+    ) -> dict[str, Any]:
+        order = self.buy_order(buy_order_id, lock=True)
+        if order["status"] != "open":
+            raise ConflictError("The buy bid is no longer open.")
+        if (
+            expected_version is not None
+            and order["version"] != expected_version
+        ):
+            raise ConflictError("The buy bid changed; refresh and retry.")
+        return self.connection.execute(
+            """
+            UPDATE buy_orders
+            SET price_cents = %s, idempotency_key = %s,
+                version = version + 1
+            WHERE id = %s AND draw_id = %s
+            RETURNING *
+            """,
+            (price_cents, idempotency_key, buy_order_id, self.draw_id),
+        ).fetchone()
+
+    def close_buy_order(
+        self, buy_order_id: UUID, *, status: str, closed_at: datetime
+    ) -> None:
+        if status not in {"filled", "cancelled"}:
+            raise ValidationError("Invalid closed buy-bid status.")
+        row = self.connection.execute(
+            """
+            UPDATE buy_orders
+            SET status = %s, closed_at = %s, version = version + 1
+            WHERE id = %s AND draw_id = %s AND status = 'open'
+            RETURNING id
+            """,
+            (status, closed_at, buy_order_id, self.draw_id),
+        ).fetchone()
+        if row is None:
+            raise ConflictError("The buy bid is no longer open.")
+
+    def create_buy_order_fill(
+        self,
+        *,
+        buy_order_id: UUID,
+        ticket_id: UUID,
+        seller_id: UUID,
+        buyer_id: UUID,
+        ownership_event_id: UUID,
+        price_cents: int,
+        idempotency_key: str,
+        executed_at: datetime,
+    ) -> dict[str, Any]:
+        return self.connection.execute(
+            """
+            INSERT INTO buy_order_fills (
+                id, draw_id, buy_order_id, ticket_id,
+                seller_participant_id, buyer_participant_id,
+                ownership_event_id, price_cents, idempotency_key, executed_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (
+                uuid4(), self.draw_id, buy_order_id, ticket_id,
+                seller_id, buyer_id, ownership_event_id, price_cents,
+                idempotency_key, executed_at,
+            ),
+        ).fetchone()
+
+    def buy_order_fill(
+        self, buy_order_id: UUID
+    ) -> dict[str, Any] | None:
+        return self.connection.execute(
+            """
+            SELECT * FROM buy_order_fills
+            WHERE draw_id = %s AND buy_order_id = %s
+            """,
+            (self.draw_id, buy_order_id),
+        ).fetchone()
+
+    def recent_buy_order_fills(
+        self, *, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        return list(
+            self.connection.execute(
+                """
+                SELECT fill.*, t.ticket_number,
+                       seller.display_name AS seller_name,
+                       buyer.display_name AS buyer_name
+                FROM buy_order_fills fill
+                JOIN tickets t ON t.id = fill.ticket_id
+                JOIN draw_participants seller
+                  ON seller.id = fill.seller_participant_id
+                JOIN draw_participants buyer
+                  ON buyer.id = fill.buyer_participant_id
+                WHERE fill.draw_id = %s
+                ORDER BY fill.executed_at DESC, fill.id DESC
+                LIMIT %s
+                """,
+                (self.draw_id, limit),
+            ).fetchall()
+        )
+
     def market_summary(self) -> dict[str, Any]:
         low_ask = self.connection.execute(
             """
@@ -428,7 +633,7 @@ class MarketplaceRepository(Repository):
             """,
             (self.draw_id,),
         ).fetchone()["low_ask"]
-        best_bid = self.connection.execute(
+        listing_bid = self.connection.execute(
             """
             SELECT max(pr.offered_price_cents) AS best_bid
             FROM purchase_requests pr
@@ -442,7 +647,20 @@ class MarketplaceRepository(Repository):
             """,
             (self.draw_id,),
         ).fetchone()["best_bid"]
+        general_bid = self.connection.execute(
+            """
+            SELECT max(price_cents) AS best_bid
+            FROM buy_orders
+            WHERE draw_id = %s AND status = 'open'
+            """,
+            (self.draw_id,),
+        ).fetchone()["best_bid"]
+        bids = [
+            value
+            for value in (listing_bid, general_bid)
+            if value is not None
+        ]
         return {
             "low_ask_cents": low_ask,
-            "best_bid_cents": best_bid,
+            "best_bid_cents": max(bids) if bids else None,
         }

@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=JetBrains+Mono:wght@500;700;800&display=swap">
   <link rel="stylesheet" href="/static/styles.css?v=25">
   <link rel="stylesheet" href="/static/campaign.css?v=27">
-  <link rel="stylesheet" href="/static/trading-dashboard.css?v=25">
+  <link rel="stylesheet" href="/static/trading-dashboard.css?v=26">
 </head>
 <body class="td-body">
   <div class="td" id="tdApp" hidden>
@@ -81,6 +81,26 @@
       <p class="td-list-hint" id="tdListHint">Choose an active ticket and enter its ask price.</p>
     </section>
 
+    <section class="td-bids" id="tdBidsSection" aria-label="Buy bids" hidden>
+      <div class="td-bid-compose">
+        <h2>BUY ONE TICKET</h2>
+        <p>Post the amount you are willing to pay for any active ticket. Payment is arranged outside this platform.</p>
+        <form class="td-bid-form" id="tdBidForm">
+          <label>
+            <span>YOUR BID</span>
+            <div class="td-money-input"><b>$</b><input id="tdBidPrice" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-label="Buy bid in dollars"></div>
+          </label>
+          <button class="td-list-submit" id="tdBidSubmit" type="submit">POST BID</button>
+          <button class="td-cancel" id="tdBidCancel" type="button" hidden>CANCEL BID</button>
+        </form>
+        <p class="td-list-hint" id="tdBidHint">One open bid per buyer.</p>
+      </div>
+      <div class="td-book td-bid-book">
+        <div class="td-book-head"><span>OPEN BUY BIDS · HIGHEST FIRST</span></div>
+        <div id="tdBidBook" aria-live="polite"></div>
+      </div>
+    </section>
+
     <section class="td-cols">
       <div class="td-book">
         <div class="td-book-head">
@@ -110,6 +130,6 @@
 
   <script src="/static/common.js?v=26"></script>
   <script src="/static/pwa.js?v=20"></script>
-  <script src="/static/trading-dashboard.js?v=21"></script>
+  <script src="/static/trading-dashboard.js?v=22"></script>
 </body>
 </html>
