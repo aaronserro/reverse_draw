@@ -74,9 +74,7 @@
 
   function renderHead() {
     const draw = snapshot.draw;
-    const stage = draw.finished
-      ? draw.rounds_total
-      : Math.min(draw.rounds_done + 1, draw.rounds_total);
+    const stage = Math.min(draw.rounds_done, draw.rounds_total);
     $("tdStage").innerHTML =
       `STAGE ${stage} / ${draw.rounds_total}` +
       (draw.rounds_done
@@ -164,11 +162,7 @@
   function renderBook() {
     const outgoing = pendingOutgoingByListing();
     const listings = snapshot.open_listings || [];
-    if (!listings.length) {
-      $("tdBook").innerHTML = `<div class="td-row"><span class="td-empty">No active listings.</span></div>`;
-      return;
-    }
-    $("tdBook").innerHTML = listings.map((listing) => {
+    const rows = listings.map((listing) => {
       const own = listing.seller_id === snapshot.participant_id;
       const request = outgoing.get(listing.id);
       let actions;
@@ -190,14 +184,47 @@
         `<span class="td-chips"><span class="td-chip in">#${listing.ticket}</span>` +
         `<span class="td-chip">${formatMoney(listing.price_cents)}</span></span>` +
         `</div></div><div class="td-act">${actions}</div></div>`;
-    }).join("");
+    });
+
+    (snapshot.incoming_requests || [])
+      .filter((request) => request.status === "pending")
+      .forEach((request) => rows.push(
+        `<div class="td-row"><div class="td-row-main"><div class="td-row-top">` +
+        `<span class="td-name">${esc(request.buyer_name)} wants ticket #${request.ticket}</span>` +
+        `<span class="td-chips"><span class="td-chip in">PENDING SALE</span>` +
+        `<span class="td-chip">${formatMoney(request.offered_price_cents)}</span></span>` +
+        `</div></div><div class="td-act">` +
+        `<button class="td-buy" type="button" data-action="approve" data-id="${esc(request.id)}" ${mutationInFlight || !marketIsOpen() ? "disabled" : ""}>APPROVE</button>` +
+        `<button class="td-cancel" type="button" data-action="decline" data-id="${esc(request.id)}" ${mutationInFlight ? "disabled" : ""}>DECLINE</button>` +
+        `</div></div>`
+      ));
+
+    const activeTickets = (snapshot.tickets || []).filter((ticket) => ticket.active);
+    (snapshot.open_buy_orders || []).forEach((order) => {
+      const own = order.buyer_id === snapshot.participant_id;
+      let action = `<span class="td-sent">YOUR BUY BID</span>`;
+      if (!own && activeTickets.length) {
+        const options = activeTickets.map((ticket) =>
+          `<option value="${ticket.ticket}">Ticket #${ticket.ticket}</option>`
+        ).join("");
+        action = `<select class="td-bid-ticket" aria-label="Ticket to sell">${options}</select>` +
+          `<button class="td-sell${order.price_cents === snapshot.best_bid_cents ? " best" : ""}" type="button" data-action="accept-bid" data-id="${esc(order.id)}" ${mutationInFlight || !marketIsOpen() ? "disabled" : ""}>SELL ${formatMoney(order.price_cents)}</button>`;
+      } else if (!own) {
+        action = `<span class="td-sent">NO ACTIVE TICKET</span>`;
+      }
+      rows.push(`<div class="td-row"><div class="td-row-main"><div class="td-row-top">` +
+        `<span class="td-name">${esc(own ? "Your buy bid" : `${order.buyer_name} wants a ticket`)}</span>` +
+        `<span class="td-chips"><span class="td-chip in">BUY BID</span>` +
+        `<span class="td-chip">${formatMoney(order.price_cents)}</span></span>` +
+        `</div></div><div class="td-act">${action}</div></div>`);
+    });
+
+    $("tdBook").innerHTML = rows.join("") ||
+      `<div class="td-row"><span class="td-empty">No pending marketplace transactions.</span></div>`;
   }
 
-  function renderBuyBids() {
-    const section = $("tdBidsSection");
-    section.hidden = false;
+  function syncBuyBidForm() {
     const ownOrder = openOwnBuyOrder();
-    const activeTickets = (snapshot.tickets || []).filter((ticket) => ticket.active);
     const disabled = mutationInFlight || !marketIsOpen();
     $("tdBidPrice").disabled = disabled;
     $("tdBidSubmit").disabled = disabled;
@@ -211,46 +238,14 @@
       ? `Your open bid is ${formatMoney(ownOrder.price_cents)}. Payment is handled outside the platform.`
       : "Post one open bid to buy any active ticket. Payment is handled outside the platform.";
 
-    const orders = snapshot.open_buy_orders || [];
-    $("tdBidBook").innerHTML = orders.map((order) => {
-      const own = order.buyer_id === snapshot.participant_id;
-      let action = `<span class="td-sent">YOUR BID</span>`;
-      if (!own && activeTickets.length) {
-        const options = activeTickets.map((ticket) =>
-          `<option value="${ticket.ticket}">Ticket #${ticket.ticket}</option>`
-        ).join("");
-        action = `<select class="td-bid-ticket" aria-label="Ticket to sell">${options}</select>` +
-          `<button class="td-sell${order.price_cents === snapshot.best_bid_cents ? " best" : ""}" type="button" data-action="accept-bid" data-id="${esc(order.id)}" ${disabled ? "disabled" : ""}>SELL ${formatMoney(order.price_cents)}</button>`;
-      } else if (!own) {
-        action = `<span class="td-sent">NO ACTIVE TICKET</span>`;
-      }
-      return `<div class="td-row"><div class="td-row-main"><div class="td-row-top">` +
-        `<span class="td-name">${esc(own ? "Your buy bid" : order.buyer_name)}</span>` +
-        `<span class="td-chips"><span class="td-chip">${formatMoney(order.price_cents)}</span></span>` +
-        `</div></div><div class="td-act">${action}</div></div>`;
-    }).join("") || `<div class="td-row"><span class="td-empty">No open buy bids.</span></div>`;
   }
 
   function renderFeed() {
-    const cards = [];
-    (snapshot.incoming_requests || [])
-      .filter((request) => request.status === "pending")
-      .forEach((request) => cards.push(
-        `<article class="td-f req"><div class="td-f-text">${esc(request.buyer_name)} wants ticket #${request.ticket} for ${formatMoney(request.offered_price_cents)}<small>Expires ${esc(RD.fmtTime(request.expires_at))}</small></div>` +
-        `<div class="td-request-actions"><button class="td-review" type="button" data-action="approve" data-id="${esc(request.id)}" ${mutationInFlight || !marketIsOpen() ? "disabled" : ""}>APPROVE</button>` +
-        `<button class="td-decline" type="button" data-action="decline" data-id="${esc(request.id)}" ${mutationInFlight ? "disabled" : ""}>DECLINE</button></div></article>`
-      ));
-    (snapshot.outgoing_requests || [])
-      .filter((request) => request.status === "pending")
-      .forEach((request) => cards.push(
-        `<article class="td-f sent">Request sent to ${esc(request.seller_name)} for ticket #${request.ticket} at ${formatMoney(request.offered_price_cents)}.` +
-        `<button class="td-withdraw" type="button" data-action="withdraw" data-id="${esc(request.id)}" ${mutationInFlight ? "disabled" : ""}>Withdraw request</button></article>`
-      ));
-    (snapshot.feed || []).forEach((trade) => cards.push(
+    const cards = (snapshot.feed || []).map((trade) =>
       `<article class="td-f trade">Ticket #${trade.ticket} transferred from ${esc(trade.seller_name)} to ${esc(trade.buyer_name)} for ${formatMoney(trade.price_cents)}.` +
       `<small>${esc(RD.fmtTime(trade.executed_at))}</small></article>`
-    ));
-    $("tdFeed").innerHTML = cards.join("") || `<span class="td-empty">No requests or settled trades yet.</span>`;
+    );
+    $("tdFeed").innerHTML = cards.join("") || `<span class="td-empty">No completed transactions yet.</span>`;
   }
 
   function renderAll() {
@@ -259,8 +254,8 @@
     renderStats();
     renderMarketState();
     syncListingForm();
+    syncBuyBidForm();
     renderBook();
-    renderBuyBids();
     renderFeed();
   }
 
@@ -534,12 +529,10 @@
     }
   }
 
-  [$("tdBook"), $("tdBidBook"), $("tdFeed")].forEach((container) => {
-    container.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (button && !button.disabled) handleAction(button).catch((error) => {
-        RD.toast(error.message || "The marketplace action failed.", true);
-      });
+  $("tdBook").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (button && !button.disabled) handleAction(button).catch((error) => {
+      RD.toast(error.message || "The marketplace action failed.", true);
     });
   });
 
