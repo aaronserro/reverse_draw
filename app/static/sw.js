@@ -1,4 +1,4 @@
-const CACHE = "reverse-draw-shell-v35";
+const CACHE = "reverse-draw-shell-v36";
 const SHELL = [
   "/",
   "/admin",
@@ -13,8 +13,8 @@ const SHELL = [
   "/static/admin.js?v=27",
   "/static/trading.js?v=25",
   "/static/trading-page.js?v=20",
-  "/static/trading-dashboard.css?v=27",
-  "/static/trading-dashboard.js?v=23",
+  "/static/trading-dashboard.css?v=28",
+  "/static/trading-dashboard.js?v=24",
   "/static/pwa.js?v=20",
   "/static/hoopp-logo.svg",
   "/static/hoopp-icon.svg",

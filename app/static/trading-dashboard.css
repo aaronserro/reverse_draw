@@ -186,6 +186,27 @@
   letter-spacing: .04em;
 }
 .td-market-state.error { color: var(--danger); }
+.td-trade-actions { display: grid; gap: 8px; }
+.td-action-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+}
+.td-action-card.sell { border-left: 4px solid var(--danger); }
+.td-action-card.buy { border-left: 4px solid var(--green); }
+.td-action-title { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.td-action-title span {
+  padding: 4px 7px;
+  border-radius: 4px;
+  color: #fff;
+  font: 800 10px/1 var(--td-mono);
+  letter-spacing: .08em;
+}
+.td-action-card.sell .td-action-title span { background: var(--danger); }
+.td-action-card.buy .td-action-title span { background: var(--green); }
+.td-action-title b { font-size: 12px; }
 .td-list-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .td-list-form label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .td-list-form label > span {
@@ -227,15 +248,14 @@
   cursor: pointer;
 }
 .td-list-submit:hover { filter: brightness(.9); }
+.td-list-submit.sell { background: var(--danger); }
+.td-list-submit.buy { background: var(--green); }
 .td-list-submit:disabled, .td-list-form select:disabled, .td-money-input:has(input:disabled) {
   opacity: .55;
   cursor: not-allowed;
 }
 .td-list-hint { margin: 7px 0 0; color: var(--muted); font-size: 11px; }
 
-.td-bid-compose { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
-.td-bid-compose h2 { margin: 0 0 5px; font-size: 14px; letter-spacing: .08em; }
-.td-bid-compose > p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .td-bid-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .td-bid-form label { display: flex; flex-direction: column; gap: 5px; color: var(--text-2); font-size: 10px; font-weight: 800; letter-spacing: .08em; }
 .td-bid-form .td-cancel { height: 44px; }
@@ -466,11 +486,12 @@
 
   .td-market-tools { padding: 14px 28px; }
   .td-market-state { margin-bottom: 8px; }
-  .td-list-form { grid-template-columns: minmax(180px, .8fr) minmax(180px, .8fr) 180px; align-items: end; }
+  .td-trade-actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .td-list-form { grid-template-columns: minmax(120px, 1fr) minmax(110px, .75fr) 130px; align-items: end; }
   .td-list-submit { grid-column: auto; }
   .td-list-hint { margin-left: 0; }
 
-  .td-bid-form { grid-template-columns: minmax(140px, 1fr) 130px 130px; align-items: end; }
+  .td-bid-form { grid-template-columns: minmax(120px, 1fr) 130px 110px; align-items: end; }
 
   .td-cols { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 20px; padding: 20px 28px; }
 

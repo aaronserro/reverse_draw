@@ -145,7 +145,7 @@
     $("tdListTicket").disabled = mutationInFlight || !marketIsOpen() || !$("tdListTicket").options.length;
     $("tdListPrice").disabled = disabled;
     $("tdListSubmit").disabled = disabled;
-    $("tdListSubmit").textContent = listing ? "UPDATE ASK" : "LIST TICKET";
+    $("tdListSubmit").textContent = listing ? "UPDATE SALE" : "LIST FOR SALE";
     if (!config.trading_enabled) {
       $("tdListHint").textContent = "Trading is currently disabled by the organizer.";
     } else if (!marketIsOpen()) {
@@ -228,7 +228,7 @@
     const disabled = mutationInFlight || !marketIsOpen();
     $("tdBidPrice").disabled = disabled;
     $("tdBidSubmit").disabled = disabled;
-    $("tdBidSubmit").textContent = ownOrder ? "UPDATE BID" : "POST BID";
+    $("tdBidSubmit").textContent = ownOrder ? "UPDATE BUY BID" : "POST BUY BID";
     $("tdBidCancel").hidden = !ownOrder;
     $("tdBidCancel").disabled = mutationInFlight;
     if (ownOrder && document.activeElement !== $("tdBidPrice")) {
